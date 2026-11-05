@@ -1,0 +1,257 @@
+[
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "backend/app.py:get_dispatcher:global-alert-sinks-ignore-tenant-and-camera-visibility",
+    "title": "Alerts from every community's private cameras go to one global Telegram chat and siren, ignoring admin_can_view",
+    "description": "Every MEDIO/ALTO event the backend dispatches comes from a resident's own private camera: /ws/live and /analyze accept only the caller's private, active camera (resolve_camera, default_camera). dispatch_live_alert and dispatch_alerts receive only the event dict (image name, level, score, reasons). They send it to a process-wide dispatcher built once from config.yaml and the environment: one MQTT siren topic, one Telegram bot and chat_id, one zone name. The event's community, camera owner and admin_can_view flag are never consulted. The web application hides a private camera's events and evidence from the community admin when admin_can_view is false. It audits admin views of other residents' private cameras, and tells the owner that the community administrator cannot see this camera and its events. The Telegram path posts that camera's evidence frame to the configured chat with no visibility check and no audit. It labels every alert with the single configured zone ('Cuadra 01 - Piloto') and fires the single siren for events from any community. The schema's per-user and per-community notification_channels (with min_level) and alert_deliveries show that per-tenant routing was planned, but no code implements it. The design question is decisive. If the deployment has one community and the chat holds only the trusted operator, who already has full database and evidence access, no boundary is crossed. In that case this is a single-installation pilot design. The boundary is crossed if the chat includes anyone else (for example the community admin or neighbours) or if more than one community exists. Then private frames that residents hid from the admin, or frames from other communities, are disclosed to that chat, and other communities sound the pilot site's siren.",
+    "claimed_root_cause": "get_dispatcher() (backend/app.py) builds a single global actuator and Notifier from config, and both dispatch functions drop the event's user, camera and community. Alert routing and the admin_can_view visibility rule are therefore never applied on the external alert path.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 539,
+        "scope": "ws_live",
+        "description": "An authenticated resident of any community opens a live stream for their own camera."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/cameras.py",
+        "line": 160,
+        "scope": "resolve_camera",
+        "description": "Only the caller's own private, active camera is accepted, so every dispatched event belongs to a private camera."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 534,
+        "scope": "_process_frame",
+        "description": "Only the event dict is passed to dispatch_live_alert. User, camera_id and community are dropped; they were used for insert_event at line 533."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 322,
+        "scope": "get_dispatcher",
+        "description": "Global dispatcher: one Notifier with the configured telegram_chat_id, one actuator from config.yaml (line 321), one zone name (line 324)."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 375,
+        "scope": "dispatch_live_alert",
+        "description": "Siren command on the single configured topic, whatever the event's community."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 381,
+        "scope": "dispatch_live_alert",
+        "description": "The private camera's evidence frame is handed to the global notifier with no admin_can_view check and no audit."
+      },
+      {
+        "kind": "sink",
+        "file": "notifier.py",
+        "line": 59,
+        "scope": "Notifier._send_photo",
+        "description": "requests.post to the Telegram sendPhoto API with the single configured chat_id and the private-camera image."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "backend/app.py",
+        "line": 282,
+        "description": "Web event listing hides a private camera's events from the community admin unless admin_can_view is true."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 664,
+        "description": "Evidence download applies the same admin_can_view restriction."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 726,
+        "description": "Admin views of another resident's private camera are audit-logged (insert at line 729); the Telegram path has no equivalent."
+      },
+      {
+        "file": "backend/pages.py",
+        "line": 168,
+        "description": "The owner is told the community administrator 'no puede' (cannot) see the camera and its events when it is hidden."
+      },
+      {
+        "file": "backend/templates/index.html",
+        "line": 372,
+        "description": "Users are told only that MEDIO/ALTO events 'activan las alertas configuradas' (trigger the configured alerts), with no recipient named."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 609,
+        "description": "Upload path dispatches the events of the caller's camera (resolved at line 582) to the same global sinks: siren at line 348, worst event's frame to the global chat at line 356."
+      },
+      {
+        "file": "bd_intivision/schema_vigia.sql",
+        "line": 227,
+        "description": "notification_channels is scoped per user or per community, with min_level at line 237; no Python code uses it."
+      },
+      {
+        "file": "bd_intivision/schema_vigia.sql",
+        "line": 255,
+        "description": "alert_deliveries per event and channel is defined but unused."
+      },
+      {
+        "file": "backend/manage.py",
+        "line": 57,
+        "description": "create_community lets the operator add any number of communities; the global dispatcher is not partitioned by them."
+      },
+      {
+        "file": "notifier.py",
+        "line": 51,
+        "description": "Every caption uses the single configured zone (config.yaml zone_name at line 1)."
+      },
+      {
+        "file": "settings.py",
+        "line": 17,
+        "description": "TELEGRAM_CHAT_ID from the environment sets the single notifier chat_id."
+      },
+      {
+        "file": "docker-compose.yml",
+        "line": 15,
+        "description": "One TELEGRAM_CHAT_ID for the whole backend."
+      }
+    ],
+    "blockers": [
+      "Membership of the production TELEGRAM_CHAT_ID chat (set via .env, not in the repository) is unknown. If only the trusted operator is in it, the photo path does not cross a boundary.",
+      "Whether the deployment holds more than one community, or residents with private cameras whose admin_can_view is false, is database state not visible in the repository.",
+      "Whether TELEGRAM_TOKEN and TELEGRAM_CHAT_ID are set in production is unknown: config.yaml has null and the values come from .env."
+    ],
+    "validation_plan": {
+      "deployment": "Owner-observed only; send no test alerts. (1) State whether TELEGRAM_TOKEN and TELEGRAM_CHAT_ID are set in the production .env. If they are, list who belongs to that chat (operator only, community admin, neighbours or others). (2) Run read-only queries against the production database: SELECT count(*) FROM communities; and SELECT community_id, count(*) FROM cameras WHERE kind = 'private' AND NOT admin_can_view GROUP BY community_id. (3) State where the device subscribed to the siren topic is installed. The candidate holds if the chat contains anyone besides the trusted operator while hidden private cameras exist, or if more than one community exists."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "wokwi/sketch.ino:onMessage:unauthenticated-siren-control-on-public-mqtt-broker",
+    "title": "Siren control topic sits on a public MQTT broker with no producer authentication",
+    "description": "The tracked config.yaml sets the actuator to type mqtt on the public broker broker.hivemq.com:1883, topic guardian/demo7k3x9/siren, with null credentials. docker-compose.yml mounts this file read-only into the backend and detector. settings.py lets the environment override only the MQTT username and password, never host or topic. So the deployed backend sends its ON:10 and WARN commands to that public topic unless the operator edits the file on the server. The only consumer in the repository is wokwi/sketch.ino. It hard-codes the same broker and topic, connects anonymously over plaintext TCP, and acts on every message with no sender identity, signature or freshness check. Any payload that starts with ON sounds the buzzer and LED for an unbounded number of seconds; ON:2592000 holds it about 30 days, and repeated messages extend it. OFF, or WARN (which calls noTone), silences an active alarm. If the broker admits anonymous clients to this topic, any other client could therefore sound, prolong or silence whatever device subscribes, and could subscribe to learn in real time when the system raises MEDIO/ALTO alerts. As committed, the sketch joins the WiFi network Wokwi-GUEST and its header calls it an ESP32 simulated in Wokwi; the backend comments also say the MQTT commands are there to be seen in Wokwi. So the repository shows only a simulated consumer. Real-world impact needs a physical device that subscribes to this topic, and a broker that admits anonymous access. Neither can be decided from source.",
+    "claimed_root_cause": "Siren control has no producer authentication; the only control is a topic name on a shared public broker. The producer (actuator.py MQTTActuator, configured by the tracked config.yaml) and the consumer (wokwi/sketch.ino connectMqtt) both connect without credentials or TLS. The consumer (wokwi/sketch.ino onMessage) neither authenticates nor bounds commands.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "wokwi/sketch.ino",
+        "line": 41,
+        "scope": "onMessage",
+        "description": "Callback for every message the broker delivers on the subscribed topic. It receives the raw payload with no publisher identity."
+      },
+      {
+        "kind": "propagation",
+        "file": "wokwi/sketch.ino",
+        "line": 52,
+        "scope": "onMessage",
+        "description": "Any payload starting with 'ON' is treated as a high-level alarm command."
+      },
+      {
+        "kind": "propagation",
+        "file": "wokwi/sketch.ino",
+        "line": 55,
+        "scope": "onMessage",
+        "description": "The duration is parsed with toInt() from the publisher's text, with no lower or upper bound."
+      },
+      {
+        "kind": "sink",
+        "file": "wokwi/sketch.ino",
+        "line": 57,
+        "scope": "onMessage",
+        "description": "tone(PIN_BUZZER, 1200) sounds the buzzer (LED set at line 56). Auto-off is scheduled at line 58 from the unbounded duration."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "config.yaml",
+        "line": 48,
+        "description": "Tracked actuator host is the public broker broker.hivemq.com, port 1883 (line 49); type mqtt at line 46."
+      },
+      {
+        "file": "config.yaml",
+        "line": 50,
+        "description": "Tracked siren topic guardian/demo7k3x9/siren."
+      },
+      {
+        "file": "config.yaml",
+        "line": 51,
+        "description": "MQTT username and password are null (lines 51-52)."
+      },
+      {
+        "file": "settings.py",
+        "line": 18,
+        "description": "The environment can override only the actuator username and password (lines 18-19), not host or topic."
+      },
+      {
+        "file": "docker-compose.yml",
+        "line": 19,
+        "description": "Repository config.yaml mounted read-only into the backend; the same for the detector at line 37."
+      },
+      {
+        "file": "actuator.py",
+        "line": 44,
+        "description": "Backend producer connects in plaintext with no tls_set; credentials are applied only if set (lines 40-41)."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 375,
+        "description": "Backend publishes ON on every live ALTO alert that passes the cooldown, so a subscriber could see it and answer with OFF."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 333,
+        "description": "dispatch_alerts docstring says one MQTT command is sent per event 'para verla en Wokwi'; line 351 repeats that the messages are spaced to be seen in Wokwi."
+      },
+      {
+        "file": "wokwi/sketch.ino",
+        "line": 2,
+        "description": "Header describes the firmware as an ESP32 simulated in Wokwi."
+      },
+      {
+        "file": "wokwi/sketch.ino",
+        "line": 20,
+        "description": "WiFi SSID Wokwi-GUEST with an empty password (line 21): as committed, the firmware joins the simulator's network, not a site network."
+      },
+      {
+        "file": "wokwi/sketch.ino",
+        "line": 24,
+        "description": "Firmware hard-codes the same topic; the broker host is hard-coded at line 22."
+      },
+      {
+        "file": "wokwi/sketch.ino",
+        "line": 29,
+        "description": "Plain WiFiClient (no TLS) for the MQTT connection."
+      },
+      {
+        "file": "wokwi/sketch.ino",
+        "line": 86,
+        "description": "mqtt.connect(id) with no username or password: an anonymous session."
+      },
+      {
+        "file": "wokwi/sketch.ino",
+        "line": 58,
+        "description": "offAt uses 32-bit unsigned arithmetic on the unbounded duration; ON:2592000 keeps the buzzer on about 30 days while uptime is under about 19.7 days."
+      },
+      {
+        "file": "wokwi/sketch.ino",
+        "line": 61,
+        "description": "WARN calls noTone, silencing an active buzzer."
+      },
+      {
+        "file": "wokwi/sketch.ino",
+        "line": 66,
+        "description": "OFF turns buzzer and LED off immediately, whoever sent it."
+      }
+    ],
+    "blockers": [
+      "Whether any physical siren or LED device subscribes to guardian/demo7k3x9/siren is a deployment fact. The only consumer in the repository is wokwi/sketch.ino, which as committed joins the Wokwi-GUEST simulator network. With only the simulation, no real-world alarm can be sounded or silenced.",
+      "The access policy of broker.hivemq.com (anonymous publish, subscribe, '#' wildcard and retained messages on this topic) is a third-party broker fact. Contacting the broker is prohibited in this run.",
+      "Whether the production backend and detector still mount the committed config.yaml unchanged (host broker.hivemq.com, this topic) is a deployment fact. The environment cannot override host or topic, but the operator may edit the file on the server."
+    ],
+    "validation_plan": {
+      "deployment": "Owner-observed only. Do not publish to or subscribe on the production topic, and do not contact the broker. (1) On the server, read the config.yaml mounted into guardian-backend (and guardian-detector, if it runs) and record actuator.type, host, port, topic and whether MQTT_USERNAME/MQTT_PASSWORD are set. (2) State whether any physical ESP32 or other siren/LED device is installed and which broker and topic its firmware uses, or whether only the Wokwi browser simulation subscribes. (3) From the broker operator's published documentation, record whether broker.hivemq.com accepts anonymous publish, subscribe, '#' subscriptions and retained messages. The candidate holds only if (1) still names the public broker and topic, (2) names a physical device on that topic, and (3) admits anonymous access."
+    }
+  }
+]

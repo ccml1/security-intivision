@@ -1,0 +1,298 @@
+[
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "backend/app.py:dispatch_alerts:upload-alerts-bypass-cooldown",
+    "title": "Uploaded-video alerts bypass the live alert cooldown, so one resident can flood the shared siren and Telegram chat",
+    "description": "dispatch_alerts, called from POST /analyze, publishes one actuator command (ON:10 for ALTO, WARN for MEDIO) for every MEDIO/ALTO event found in an uploaded video and sends one Telegram photo per upload. It applies no cooldown and no per-user or per-community limit, and it never consults LEVEL_COOLDOWN/_last_alert, which the live path uses so the shared channels are not saturated. Any resident or community_admin can upload video (up to MAX_UPLOAD_MB=200) against their own private camera. The event count is limited only by video time divided by 5 s, and video time is the frame index divided by the fps the container declares, which the uploader controls. One upload with many ALTO events therefore sends a burst of ON commands 0.5 s apart; each resets the ESP32 offAt, keeping the neighbourhood siren on for the whole dispatch. Repeated small uploads (about 15 frames of a person with raised hands is enough for MEDIO) each post an uploader-chosen frame to the shared chat as 'ALERTA DE SEGURIDAD' for the configured zone, at the upload rate instead of at most one ALTO per 20 s and one MEDIO per 45 s. If such bursts trigger Telegram per-chat throttling, other residents' alerts sent in that period fail and are only logged. The blocking of the event loop by dispatch_alerts' sleeps and publish waits is part of the separate root cause backend/app.py:analyze:blocking-video-analysis-on-event-loop and is not claimed here. Not observed: no target code was executed and Telegram was not contacted.",
+    "claimed_root_cause": "The upload alert path (backend/app.py dispatch_alerts, lines 330-356) sends to the same shared actuator and Telegram sinks as the live path but has no rate control or deduplication across events or uploads, so it bypasses the anti-flood limit enforced on its live sibling (backend/app.py:359-372).",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 577,
+        "scope": "analyze",
+        "description": "An authenticated resident uploads an arbitrary video for their own private camera."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 603,
+        "scope": "analyze",
+        "description": "analyze_video returns every MEDIO/ALTO event found in the video."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 85,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "At most one event per 5 s of video time, where video time = idx / container fps (lines 62, 76)."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 609,
+        "scope": "analyze",
+        "description": "dispatch_alerts is called for every upload with all its events."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 344,
+        "scope": "dispatch_alerts",
+        "description": "Loops over every event with no cooldown, count limit or check of _last_alert."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 348,
+        "scope": "dispatch_alerts",
+        "description": "One siren ON command per ALTO event (one WARN per MEDIO event at line 350), sent to the shared topic via actuator.py:57."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/app.py",
+        "line": 356,
+        "scope": "dispatch_alerts",
+        "description": "One Telegram photo of the uploader-chosen frame per upload, independent of LEVEL_COOLDOWN."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "backend/app.py",
+        "line": 333,
+        "description": "Docstring: one MQTT order per event, intended for viewing in Wokwi."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 334,
+        "description": "Docstring: only one Telegram per video 'to avoid filling the chat', so chat flooding is an intended concern, but nothing limits it across uploads."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 359,
+        "description": "LEVEL_COOLDOWN applies only to the live path (dispatch_live_alert)."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 33,
+        "description": "Uploads accepted up to MAX_UPLOAD_MB=200."
+      },
+      {
+        "file": "engine.py",
+        "line": 62,
+        "description": "fps comes from the uploaded container's metadata, so the uploader controls the video-time scale."
+      },
+      {
+        "file": "notifier.py",
+        "line": 65,
+        "description": "A Telegram rejection (for example, rate limiting) is only logged; there is no retry."
+      },
+      {
+        "file": "wokwi/sketch.ino",
+        "line": 58,
+        "description": "Each ON command resets offAt, so back-to-back commands keep the siren on continuously."
+      }
+    ],
+    "blockers": [
+      "No target code may be executed in this run (no OS-enforced sandbox), so the per-upload command count and per-upload Telegram sends were not observed, even with a mocked dispatcher.",
+      "Whether bursts of uploads cause Telegram to throttle the configured chat and drop other residents' alerts is a third-party runtime fact; contacting Telegram is prohibited."
+    ],
+    "validation_plan": {
+      "local": "In a sandbox with no network: replace backend.app.get_dispatcher with a stub returning enabled=True and recording actuator.trigger/warn and notifier.send_photo calls, and patch backend.app.time.sleep to a no-op. Call dispatch_alerts once with 50 synthetic ALTO events (video_time_s, level, score 6, reasons, image) and record 50 trigger calls and 1 send_photo call. Then call it 10 times with one MEDIO event each and record 10 send_photo calls. For comparison, call dispatch_live_alert 10 times with MEDIO events and backend.app.time.time patched to advance 1 s per call: expect 1 send_photo call.",
+      "deployment": "Owner checks the type of the configured TELEGRAM_CHAT_ID (group shared by several residents or communities, or a private chat) and reviews existing backend logs, without generating new uploads, for 'Telegram rechazó la foto' entries containing error_code 429 near bursts of /analyze requests."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "backend/app.py:dispatch_live_alert:global-per-level-cooldown-cross-tenant-suppression",
+    "title": "Global per-level live alert cooldown lets one user's camera suppress other users' siren and Telegram alerts",
+    "description": "dispatch_live_alert keeps one module-level _last_alert dict keyed only by level ('MEDIO' or 'ALTO'). It returns early whenever the same level was dispatched anywhere in the process in the last 20 s (ALTO) or 45 s (MEDIO). The backend runs as a single uvicorn process (backend/Dockerfile:25), so every live session of every user and community shares this one budget. A resident fully controls the frames sent over /ws/live for their own private camera, and each LiveSession can emit an event every 5 s (config.yaml:42). With the committed config (no restricted zone, daytime), person (1) + loitering for 15 s of wall-clock time (2) + hands raised (3) scores 6 = ALTO, and person + loitering scores 3 = MEDIO. A resident who keeps re-sending such frames (for example, standing in front of their webcam with raised hands, using a second session for MEDIO) keeps both windows occupied. While they are, live MEDIO/ALTO events from every other user's camera are still stored in the database, but they produce no actuator command of their own and no Telegram photo. The chat receives only the attacker's evidence, so the people reading it never see the victims' frames. The siren is shared, so the attacker's own ALTO commands still sound it 10 s out of every 20 s; the victim-specific loss is mainly the Telegram evidence and any siren activation that falls in the off part of the window. Without an attacker, ordinary concurrent activity has the same effect, which on its own is rate limiting of a shared sink; the security question is a malicious resident using it to hide other residents' alerts. Not observed: no target code was executed.",
+    "claimed_root_cause": "The live alert cooldown in backend/app.py (LEVEL_COOLDOWN and _last_alert, lines 359-372) is keyed by level alone, not by camera, owner or community. The rate-limit budget for the shared alert sinks can therefore be used up by any one principal, and other principals' live alerts are dropped while it is.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 539,
+        "scope": "ws_live",
+        "description": "An authenticated resident (any community) opens /ws/live for their own private camera and streams frames they choose."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 569,
+        "scope": "ws_live",
+        "description": "Each received frame is passed to _process_frame in a worker thread."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 146,
+        "scope": "LiveSession.process",
+        "description": "A MEDIO/ALTO result yields an event at most every event_cooldown_s (5 s) per session; the session's own scorer measures loitering with time.time() (line 129)."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 534,
+        "scope": "_process_frame",
+        "description": "The attacker's event is stored and passed to dispatch_live_alert."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 372,
+        "scope": "dispatch_live_alert",
+        "description": "_last_alert[level] is set process-wide by the attacker's event."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/app.py",
+        "line": 370,
+        "scope": "dispatch_live_alert",
+        "description": "A later live event of the same level from any other user's camera matches the same key and returns at line 371, before the actuator call (lines 374-377) and the Telegram send_photo (line 381)."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "backend/app.py",
+        "line": 359,
+        "description": "LEVEL_COOLDOWN = {'MEDIO': 45, 'ALTO': 20}, keyed by level only."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 360,
+        "description": "_last_alert is one module-level dict shared by all sessions, users and communities."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 364,
+        "description": "Docstring: the per-level cooldown exists so the external channels are not saturated."
+      },
+      {
+        "file": "backend/Dockerfile",
+        "line": 25,
+        "description": "uvicorn is started without --workers, so one process (and one _last_alert) serves every user."
+      },
+      {
+        "file": "config.yaml",
+        "line": 42,
+        "description": "event_cooldown_s: 5 allows one live event every 5 s per session."
+      },
+      {
+        "file": "threat_scoring.py",
+        "line": 82,
+        "description": "hands_up adds 3; with person_present (1, line 64) and loitering (2, line 71) the score is 6, which meets the high threshold (config.yaml line 25)."
+      },
+      {
+        "file": "bd_intivision/schema_vigia.sql",
+        "line": 237,
+        "description": "notification_channels has a per-channel min_level, showing recipient-scoped alerting was intended; no Python code uses this table."
+      }
+    ],
+    "blockers": [
+      "No target code may be executed in this run (no OS-enforced sandbox), so the suppression of a second user's alert was not observed, even with a mocked dispatcher.",
+      "Whether the deployment has more than one camera owner streaming live to the same backend process, so that one resident can suppress another resident's alerts, is a deployment fact not visible in source."
+    ],
+    "validation_plan": {
+      "local": "In a sandbox with no network: replace backend.app.get_dispatcher with a stub returning enabled=True and recording actuator (trigger/warn) and notifier (send_photo) calls; patch backend.app.time.time to return controlled values; clear backend.app._last_alert. Call dispatch_live_alert with ALTO events tagged as camera A at t=0, 19 and 38, and with an ALTO event tagged as camera B (different owner and community) at t=10 and t=30. Expected if the claim holds: three trigger and three send_photo calls, all for camera A's images, none for camera B's.",
+      "deployment": "Owner checks, from the database and without generating traffic, whether more than one user or community has cameras with live sessions on this backend (for example, distinct owners in cameras.last_seen within the same period). If only one owner ever streams live, the shared cooldown only rate-limits that owner's own alerts."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "engine.py:GuardianEngine.analyze_video:shared-scorer-state-across-uploads",
+    "title": "Uploaded-video threat scoring reuses one ThreatScorer across users, so one upload can lower the next user's event levels",
+    "description": "GuardianEngine is a process-wide singleton (backend/app.py:57-62, one uvicorn process per backend/Dockerfile:25). analyze_video scores every uploaded video with the single self.scorer created in __init__ and never resets it, whereas each live session gets its own ThreatScorer ('scorer propio por cliente'). ThreatScorer keeps a persistence history deque and presence_start between evaluate() calls. The analyze handler runs analyze_video synchronously with no await inside it, so uploads are analysed strictly one after another, and each video starts with the exact scorer state the previous video left. If resident A's video ends with a person present who first appeared at video time P (for example, P = 33 s in a 60 s video, or much larger with a low declared fps), presence_start stays P. In the next analysed video, from any user in any community, a person present from the first sampled frame gets loiter_time = t - P, which is negative or below 15 s until t >= P + 15, so the 2 loitering points are lost until the person is absent in a sampled frame. Outside the sensitive hours (22:00-06:00 at analysis time) and with no restricted zone (committed config), person + loitering (3, MEDIO) becomes 1 (BAJO): no event is stored and no WARN or Telegram is sent. Person + loitering + hands_up (6, ALTO) becomes 4 (MEDIO): WARN instead of the siren. The history carried from A also makes B's first frames immediately 'stable', which has no comparable effect. The attacker cannot see others' uploads, so they would need to upload repeatedly to be the preceding analysis. Only uploaded-video analysis is affected, not live streams. Not observed: no target code was executed.",
+    "claimed_root_cause": "engine.py analyze_video (line 83) uses the engine-level self.scorer (line 46), whose temporal state (history and presence_start, threat_scoring.py:28-29 and 53-59) persists across analyses of different users' videos, instead of a fresh ThreatScorer per analysis as LiveSession does (engine.py:122).",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 577,
+        "scope": "analyze",
+        "description": "Resident A uploads a video ending with a person present; resident B (any community) uploads next."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 603,
+        "scope": "analyze",
+        "description": "Both uploads are analysed synchronously, one after the other, by the singleton engine from get_engine (lines 57-62)."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 46,
+        "scope": "GuardianEngine.__init__",
+        "description": "self.scorer is created once per process."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 83,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "self.scorer.evaluate is called for every video, with no reset between analyses."
+      },
+      {
+        "kind": "propagation",
+        "file": "threat_scoring.py",
+        "line": 54,
+        "scope": "ThreatScorer.evaluate",
+        "description": "presence_start is set only when None, so A's value P is kept while B's person is present from the first sampled frame."
+      },
+      {
+        "kind": "propagation",
+        "file": "threat_scoring.py",
+        "line": 70,
+        "scope": "ThreatScorer.evaluate",
+        "description": "loiter_time = t - P (line 56) stays below loitering_seconds until t >= P + 15, so no loitering points."
+      },
+      {
+        "kind": "sink",
+        "file": "engine.py",
+        "line": 85,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "B's event is created, or not, from the lowered level; with no event, nothing is stored or dispatched for that frame."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "engine.py",
+        "line": 122,
+        "description": "LiveSession creates its own ThreatScorer per client, showing per-client state was intended."
+      },
+      {
+        "file": "engine.py",
+        "line": 110,
+        "description": "Docstring: 'scorer propio por cliente' (one scorer per client)."
+      },
+      {
+        "file": "engine.py",
+        "line": 62,
+        "description": "fps comes from the uploaded container, so the uploader also controls the video-time scale of P."
+      },
+      {
+        "file": "threat_scoring.py",
+        "line": 28,
+        "description": "The persistence history deque survives across analyze_video calls."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 61,
+        "description": "A single GuardianEngine serves all users."
+      },
+      {
+        "file": "config.yaml",
+        "line": 24,
+        "description": "medium threshold 3 and high threshold 6 (line 25), with loitering worth 2 (line 17) and loitering_seconds 15 (line 26)."
+      }
+    ],
+    "blockers": [
+      "No target code may be executed in this run (no OS-enforced sandbox), so the lowered level for the second video was not observed, even with a stubbed detector.",
+      "Whether real victim footage keeps a person detected in every sampled frame long enough for the carried presence_start to matter depends on YOLO detections, which were not run."
+    ],
+    "validation_plan": {
+      "local": "In a sandbox with no network: before constructing the engine, replace engine.PersonDetector with a stub whose detect(frame) returns [{'bbox': [10, 10, 50, 100], 'conf': 0.9}] when frame.mean() > 128 and [] otherwise; load config.yaml with pose.enabled set to false; patch engine.datetime so now() returns 12:00. Write with cv2.VideoWriter at 1 fps: video A, 60 frames 64x64, black for frames 1-30 and white for 31-60; video B, 30 white frames. On a fresh engine, analyze_video(B) should return MEDIO events (expected at video times 18, 24 and 30 s). On another fresh engine, run analyze_video(A) and then analyze_video(B): if the claim holds, B returns no events because presence_start stays at 33 s."
+    }
+  }
+]

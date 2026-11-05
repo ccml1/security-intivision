@@ -1,0 +1,95 @@
+[
+  {
+    "surface": "POST /login (anonymous)",
+    "boundary": "PostgreSQL connection pool shared by all routes (backend/db.py ThreadedConnectionPool, DB_POOL_MAX default 10)",
+    "subsystem": "Authentication and database access",
+    "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY: anonymous work holding a shared pooled connection",
+    "starting_paths": [
+      "backend/auth.py",
+      "backend/app.py",
+      "backend/db.py"
+    ],
+    "reason": "auth.authenticate keeps a pooled PostgreSQL connection checked out for the whole bcrypt verification (backend/auth.py:95-123), including the dummy check for unknown identifiers at line 104. The pool maximum is 10 (backend/db.py:25). Pool exhaustion raises psycopg2.pool.PoolError, which login_submit does not catch, so it is never registered as a failure by the per-IP throttle (backend/app.py:444-449). The open question is whether anonymous concurrent logins from several sources can make every DB-backed route and WebSocket authentication return 503. That is an availability boundary outside the assigned browser-session, CSRF and WebSocket-origin units, and outside the peer resource unit, which covers only /ingest and /analyze.",
+    "from": "h1-auth-session"
+  },
+  {
+    "surface": "dispatch_alerts and dispatch_live_alert sending evidence photos to Telegram (backend/app.py -> notifier.Notifier.send_photo)",
+    "boundary": "Per-camera admin_can_view and per-community event scope versus the single globally configured Telegram chat",
+    "subsystem": "Alert dispatch / derived copies of evidence",
+    "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Derived-data and disclosure attack classes (alternate readers)",
+    "starting_paths": [
+      "backend/app.py",
+      "notifier.py",
+      "settings.py",
+      "config.yaml"
+    ],
+    "reason": "Every analyzed video's worst event (app.py:352-356) and every live event past the global cooldown (app.py:378-381) sends its evidence JPEG to one Telegram chat_id. This ignores the event's community, its owner, and whether the owner hid the camera from the admin. That chat is a derived copy of all communities' private evidence, readable by whoever is in the chat. The h4 alert-dispatch unit is scoped to abuse and quota (Business logic plus Resource exhaustion), not to this privacy and isolation question. The deployment fact of who reads the chat decides the impact.",
+    "from": "h2-access-data"
+  },
+  {
+    "surface": "WS /ws/live frame decoding and /analyze frame decoding",
+    "boundary": "Decoded image dimension and memory limits (cv2.imdecode, cv2.VideoCapture)",
+    "subsystem": "Media decoding in backend/app.py and engine.py",
+    "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Decompression and representation amplification",
+    "starting_paths": [
+      "backend/app.py",
+      "engine.py",
+      "requirements.txt"
+    ],
+    "reason": "_process_frame calls cv2.imdecode on attacker bytes before any pixel or dimension check (backend/app.py:528). Messages can be up to the server's WebSocket limit, with no application cap, and decoding runs in parallel threads outside infer_lock. A small, highly compressible JPEG or video can declare very large dimensions, and frame.copy and imwrite allocate again. No unit selected the computational-amplification classes, so memory amplification from frame decoding has no owner.",
+    "from": "h3-edge-files"
+  },
+  {
+    "surface": "Pre-authentication POST /login and POST /ingest database access",
+    "boundary": "backend/db.py#get_pool shared psycopg2 connection pool",
+    "subsystem": "Database access layer",
+    "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Worker, pool, and priority starvation",
+    "starting_paths": [
+      "backend/db.py",
+      "backend/auth.py",
+      "backend/app.py"
+    ],
+    "reason": "ThreadedConnectionPool (DB_POOL_MAX default 10, backend/db.py:24-25) raises PoolError at once when exhausted, which is mapped to a 503 for every route. auth.authenticate holds a pooled connection while running bcrypt, including the dummy hash for unknown users (backend/auth.py:95-123). edge_from_token runs a DB UPDATE for any bearer value before any size or rate gate. Concurrent unauthenticated attempts could therefore deny database access to all tenants. No unit owns the shared pool.",
+    "from": "h3-edge-files"
+  },
+  {
+    "surface": "Form-bodied endpoints POST /login, /logout, /cameras, /cameras/{id}/visibilidad",
+    "boundary": "Request body size before authentication; no app-level or Caddy body limit",
+    "subsystem": "HTTP ingress and form parsing",
+    "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Pre-authentication work imbalance",
+    "starting_paths": [
+      "backend/app.py",
+      "Caddyfile",
+      "requirements.txt"
+    ],
+    "reason": "limitar_subidas applies only to /analyze. FastAPI parses Form bodies, urlencoded or multipart (with file parts spooled to disk), before the handler and before current_user, and POST /login is unauthenticated. The Caddyfile sets no request_body limit, and how big a body is accepted depends on the Starlette version. This lies outside the /analyze boundary assigned here.",
+    "from": "h3-edge-files"
+  },
+  {
+    "surface": "notifier.py#_send_photo and _send_video exception logging",
+    "boundary": "Confinement of the Telegram bot token (TELEGRAM_TOKEN) to process memory",
+    "subsystem": "Alert notification (Telegram)",
+    "attack_class": "Secret disclosure through logs (Cryptography and secrets)",
+    "starting_paths": [
+      "notifier.py",
+      "settings.py",
+      "docker-compose.yml"
+    ],
+    "reason": "notifier.py builds the URL https://api.telegram.org/bot{token}/sendPhoto (line 59) and logs str(e) on any exception (lines 66-67, 79-80). requests connection errors embed the request path, so the bot token may be written to container logs. Secrets-in-logs is excluded from this hunter's blocks and is not covered by the git-history secrets unit.",
+    "from": "h4-mqtt-alerts"
+  },
+  {
+    "surface": "Shared ./events volume written by the detector container (profile live)",
+    "boundary": "Detector-written files in the backend-served evidence namespace",
+    "subsystem": "main.py / notifier.py detector pipeline and backend /evidence",
+    "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Tenant and object-isolation attack classes",
+    "starting_paths": [
+      "docker-compose.yml",
+      "main.py",
+      "notifier.py",
+      "backend/app.py"
+    ],
+    "reason": "The detector writes events.jsonl and intruso_YYYYmmdd_HHMMSS.jpg into ./events, the same directory /evidence/{name} serves (EVIDENCE_DIR). These files have no media_files owner. 'events.jsonl' and the timestamp-predictable intruso_* names match IMAGE_NAME_RE, so an edge token holder could claim them via /ingest and their community admin could then fetch them. This cross-workload volume path is not an explicit starting path in the /evidence or /ingest units; the parent should dedupe it against those units.",
+    "from": "h5-deploy-secrets"
+  }
+]

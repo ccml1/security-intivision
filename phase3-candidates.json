@@ -1,0 +1,1791 @@
+[
+  {
+    "proposed_verdict": "needs_validation",
+    "fingerprint": "backend/auth.py:authenticate:locked-path-skips-bcrypt-timing",
+    "title": "Locked-account login branch skips bcrypt, so response time reveals whether an account exists",
+    "description": "POST /login is meant to make unknown, inactive, wrong-password and locked accounts indistinguishable: every failure returns the same 401 body, and unknown accounts run a dummy bcrypt check. The locked branch in auth.authenticate returns before any bcrypt work, while every other failure path runs exactly one bcrypt verification at the same default cost. An anonymous visitor can submit five wrong passwords for a candidate email or phone number and then time a sixth attempt. A registered account, now locked, answers without the bcrypt delay; an unregistered identifier answers after it. This reveals whether that email or phone belongs to a VIGIA resident or admin, and it locks the real account for LOCK_MINUTES as a side effect. The impact is limited to disclosure of account existence. The per-IP throttle (30 failures per 15 minutes) limits the rate to about five identifiers per source address per window.",
+    "claimed_root_cause": "backend/auth.py authenticate returns 'locked' at the locked check before calling verify_password. The locked path therefore does no bcrypt work, while unknown, inactive and wrong-password paths each run one bcrypt verification at the same cost.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 438,
+        "scope": "login_submit",
+        "description": "Anonymous POST /login with form fields identifier and password."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 445,
+        "scope": "login_submit",
+        "description": "Calls auth.authenticate(identifier, password)."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/auth.py",
+        "line": 96,
+        "scope": "authenticate",
+        "description": "Looks up the account by lower(email) or phone and computes the locked flag from locked_until."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/auth.py",
+        "line": 104,
+        "scope": "authenticate",
+        "description": "Unknown or inactive identifier: one bcrypt verification against _DUMMY_HASH, then returns 'invalid'."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/auth.py",
+        "line": 116,
+        "scope": "authenticate",
+        "description": "For an existing account, the fifth consecutive failure sets locked_until = now() + LOCK_MINUTES."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/auth.py",
+        "line": 107,
+        "scope": "authenticate",
+        "description": "Locked account: returns 'locked' immediately with no bcrypt work, so the response comes back roughly one bcrypt duration sooner than for an unknown identifier."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "backend/auth.py",
+        "line": 64,
+        "description": "Comment states the intent: the dummy hash makes a nonexistent user take the same time, so account existence cannot be deduced from response time."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 450,
+        "description": "Comment states the intent: the same message and code for 'does not exist', 'wrong password' and 'locked', so nobody can find out which accounts exist."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 453,
+        "description": "Identical 401 response for every failure reason; only timing differs."
+      },
+      {
+        "file": "backend/auth.py",
+        "line": 66,
+        "description": "Dummy hash is created with bcrypt.gensalt() at default cost."
+      },
+      {
+        "file": "backend/auth.py",
+        "line": 53,
+        "description": "User password hashes also use bcrypt.gensalt() at default cost, so unknown and wrong-password paths take the same time and only the locked path differs."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 440,
+        "description": "The per-IP throttle (defaults at backend/auth.py:34-35) limits the probe rate but does not remove the oracle."
+      }
+    ],
+    "blockers": [
+      "No OS-enforced sandbox, PostgreSQL instance or bcrypt runtime was available and target code was not executed, so the response-time gap between the locked branch and the unknown-account branch has not been measured."
+    ],
+    "validation_plan": {
+      "local": "In a sandbox with a disposable local PostgreSQL loaded from bd_intivision/schema_vigia.sql and one dummy active user, call backend.auth.authenticate directly. Make five calls with a wrong password for the dummy user, then time a sixth call. Separately, time six calls for an unregistered identifier. The claim holds if the dummy user's sixth call returns 'locked' in milliseconds while the unregistered identifier's calls take about one bcrypt duration (hundreds of milliseconds at cost 12). Regression check: call verify_password(password, _DUMMY_HASH) before returning 'locked' and confirm the timings converge."
+    },
+    "source_hunter": "h1-auth-session",
+    "verifier": "v1-auth-session",
+    "merged_duplicates": []
+  },
+  {
+    "proposed_verdict": "needs_validation",
+    "fingerprint": "backend/app.py:ws_live:session-not-rechecked-after-accept",
+    "title": "Open /ws/live sockets keep working after logout, suspension, password reset or session expiry",
+    "description": "ws_live validates the vigia_session cookie once, right after the handshake, then loops indefinitely processing frames with the user and camera captured at connect time. HTTP routes re-check the session on every request (revoked_at, expires_at and users.status). backend/manage.py set-status and set-password explicitly revoke all sessions, so that a suspended or reset account 'loses its sessions'. Nothing closes or re-validates sockets that are already open. A resident who is suspended keeps a working socket, and so does someone using a stolen cookie whose sessions were revoked by a password reset. Each frame is still analysed. MEDIO/ALTO results are inserted as events attributed to that user and camera in the community's records. dispatch_live_alert still drives the shared MQTT siren and the Telegram channel. Socket lifetime is also not tied to the 12-hour session expiry.",
+    "claimed_root_cause": "backend/app.py ws_live calls auth.user_from_websocket only once, before the receive loop. The loop over receive_bytes and _process_frame never re-checks the session token, account status, expiry or camera binding, and the server keeps no registry of open sockets to close when sessions are revoked.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 538,
+        "scope": "ws_live",
+        "description": "WebSocket /ws/live?camera= upgrade carrying the vigia_session cookie."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 546,
+        "scope": "ws_live",
+        "description": "Session resolved once via auth.user_from_websocket; revocation, expiry and status are checked only at this moment."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 554,
+        "scope": "ws_live",
+        "description": "Camera binding (owner, private, active) resolved once."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 567,
+        "scope": "ws_live",
+        "description": "Receive loop accepts frames indefinitely with no session, status or expiry re-check."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 569,
+        "scope": "ws_live",
+        "description": "Each frame is processed with the user and camera captured at connect time."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 533,
+        "scope": "_process_frame",
+        "description": "insert_event writes an event and evidence media row attributed to the captured user, community and camera."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/app.py",
+        "line": 534,
+        "scope": "_process_frame",
+        "description": "dispatch_live_alert triggers the shared siren (ALTO) or warning (MEDIO) and sends a Telegram photo alert."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "backend/auth.py",
+        "line": 158,
+        "description": "The HTTP session lookup requires revoked_at IS NULL, expires_at > now() and status 'active' on every request; the WebSocket path runs it only once."
+      },
+      {
+        "file": "backend/manage.py",
+        "line": 184,
+        "description": "set-status documents that a suspended account cannot log in and loses its sessions; line 189 only updates session rows."
+      },
+      {
+        "file": "backend/manage.py",
+        "line": 178,
+        "description": "set-password revokes all session rows to close open sessions; open sockets are unaffected."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 463,
+        "description": "Logout only revokes the session row; no socket is closed."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 375,
+        "description": "dispatch_live_alert triggers the siren for ALTO events, limited only by a global cooldown."
+      },
+      {
+        "file": "engine.py",
+        "line": 146,
+        "description": "LiveSession.process emits an event for MEDIO/ALTO frames, so continued frames keep producing events and evidence."
+      }
+    ],
+    "blockers": [
+      "Target code was not executed (no sandbox, PostgreSQL or YOLO models), so it was not observed that a socket opened before revocation keeps receiving, analysing and inserting frames after the session row is revoked or the user is suspended.",
+      "How long such a socket can stay open in deployment depends on uvicorn/websockets keepalive defaults and Caddy's WebSocket proxy timeouts. Source does not configure these and they were not observed."
+    ],
+    "validation_plan": {
+      "local": "In a sandbox with a disposable local PostgreSQL (schema_vigia.sql) and one dummy resident with a private camera, use Starlette TestClient against backend.app. Patch get_engine to return a stub whose session.process returns a fixed ALTO event, patch cv2.imdecode to return a small array, and patch get_dispatcher to a recording mock. Log in, open /ws/live?camera=<id> and send one frame. Then run UPDATE users SET status='suspended' and UPDATE sessions SET revoked_at=now(), as manage.py set-status does. Send a second frame on the same socket and count events rows and mock actuator.trigger calls. The claim holds if the second frame still inserts an event and calls the mock. Regression check: re-validate the token, status, expiry and camera per frame (or on a short interval) and close the socket with 4401."
+    },
+    "source_hunter": "h1-auth-session",
+    "verifier": "v1-auth-session",
+    "merged_duplicates": []
+  },
+  {
+    "proposed_verdict": "needs_validation",
+    "fingerprint": "backend/auth.py:client_ip:xff-trusted-from-any-private-peer",
+    "title": "client_ip trusts client-supplied X-Forwarded-For from any private or loopback peer, not only from Caddy",
+    "description": "client_ip supplies the key for the per-IP login throttle and the address stored in sessions.ip and in the admin view_camera audit entry. It returns the last X-Forwarded-For element whenever the TCP peer is in 127/8, 10/8, 172.16/12, 192.168/16, ::1 or fc00::/7. Through Caddy this is correct, because the last element is always the one Caddy sets from the real client. However, docker-compose.yml also publishes the backend directly on 0.0.0.0:8000. Docker may present an Internet client of that port as a private gateway address: for example, userland-proxy handling of IPv6 clients without ip6tables, rootless Docker, or Docker Desktop, or simply a client on the same private network. In that case the client's own X-Forwarded-For value is trusted. Each failed login can then claim a new address to escape the 30-failures-per-15-minutes throttle, leaving only the per-account lockout against password spraying. An attacker can also attribute failures to a victim's real address to block logins from it, and can forge the IP recorded in sessions and audit_log.",
+    "claimed_root_cause": "backend/auth.py client_ip decides whether to trust the proxy header by membership in broad private ranges (_REDES_DE_CONFIANZA) instead of the specific Caddy proxy address. Any peer that appears private, including a direct client of the published port when Docker rewrites the source address, therefore supplies the address used by security controls.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 438,
+        "scope": "login_submit",
+        "description": "Anonymous POST /login with an arbitrary X-Forwarded-For header, reaching the backend directly on published port 8000."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 439,
+        "scope": "login_submit",
+        "description": "Client address derived with auth.client_ip(request)."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/auth.py",
+        "line": 260,
+        "scope": "client_ip",
+        "description": "The peer address is checked only for membership in the private and loopback ranges defined at backend/auth.py:239-240."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/auth.py",
+        "line": 263,
+        "scope": "client_ip",
+        "description": "The last comma-separated X-Forwarded-For element is taken and returned if it parses as an IP address."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/app.py",
+        "line": 440,
+        "scope": "login_submit",
+        "description": "The per-IP throttle decision is keyed on the header-supplied address, and failures are recorded under it at backend/app.py:449."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "docker-compose.yml",
+        "line": 10,
+        "description": "Backend port 8000 is published on all host interfaces in addition to the Caddy ingress."
+      },
+      {
+        "file": "Caddyfile",
+        "line": 2,
+        "description": "Caddy's reverse_proxy to backend:8000 is the only intended forwarding proxy."
+      },
+      {
+        "file": "backend/auth.py",
+        "line": 239,
+        "description": "Trusted networks are all RFC1918, loopback and ULA ranges rather than the proxy's address."
+      },
+      {
+        "file": "backend/auth.py",
+        "line": 283,
+        "description": "The throttle compares the failure count for the derived address against LOGIN_IP_MAX_FAILURES."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 454,
+        "description": "create_session stores the derived address in sessions.ip."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 731,
+        "description": "The admin view_camera audit entry records auth.client_ip(request)."
+      }
+    ],
+    "blockers": [
+      "Source does not show which address the backend container sees for an Internet client connecting directly to published port 8000; this is a Docker networking fact. With iptables DNAT the public address is preserved and the header is ignored. With userland-proxy handling (for example IPv6 clients without ip6tables), rootless Docker or Docker Desktop, the peer appears as a private gateway address and the header is trusted.",
+      "Whether port 8000 is reachable from the Internet at all (host or cloud firewall) is a deployment fact owned by the deployment unit and was not observed.",
+      "Target code was not executed, so the throttle bypass was not observed locally."
+    ],
+    "validation_plan": {
+      "local": "In a sandbox, build a Starlette Request whose scope client is ('172.18.0.1', 40000) with header X-Forwarded-For: 203.0.113.7, and confirm that auth.client_ip returns '203.0.113.7'. Call register_failure 30 times for that address, then confirm throttled('203.0.113.7') is True and throttled('203.0.113.8') is False. Regression check: trust X-Forwarded-For only when the peer equals the configured Caddy address, or stop publishing port 8000.",
+      "deployment": "The owner checks on the production host whether port 8000 is reachable externally and how Docker publishes it (docker info: rootless, userland-proxy, ip6tables). If it is reachable, the owner sends one failed dummy login from an external machine they control to http://<host>:8000/login with X-Forwarded-For: 198.51.100.1, then reads the backend log line 'Acceso fallido desde ...' to see which address was recorded."
+    },
+    "source_hunter": "h1-auth-session",
+    "verifier": "v1-auth-session",
+    "merged_duplicates": []
+  },
+  {
+    "proposed_verdict": "needs_validation",
+    "fingerprint": "backend/app.py:evidence:first-claimant-storage-key-serves-shared-evidence-file",
+    "title": "/evidence serves any file at a claimed name, so another user's or community's frame written under that name reaches the first claimant",
+    "description": "GET /evidence/{name} grants access when the caller is in scope for the single media_files row with storage_key = name. It then streams whatever file currently sits at events/<name>, a flat directory shared by every user's uploads, live sessions and the live detector. storage_key is globally unique and has no tenant part, and the first insert wins (ON CONFLICT DO NOTHING). Evidence from uploaded videos is named only from the sanitized upload filename and the video-relative time (evt_<file>_<ms>.jpg).\n\nVariant 1, resident versus resident in any community. Resident A uploads a video with a chosen filename, and the /analyze response lists the evidence names A now owns. Later, resident B in any community uploads a file with the same sanitized name, and an event fires at the same video-time stamp. B's frame overwrites the file, B's media row is silently dropped, and A's GET /evidence/<name> returns B's frame. B's event shows no image.\n\nVariant 2, reverse direction. A later uploader replaces an earlier owner's evidence image, so that owner and their admin see foreign content as their evidence.\n\nVariant 3, edge pre-claim. The claim step is in h3-edge-files' /ingest unit; the read-side consequence is here. An edge device can register any [A-Za-z0-9._-] name with camera_id NULL. Its community admin then passes the c.id IS NULL branch and can read whatever file later appears under that name. Examples: another community's video evidence, a hidden private camera's evidence in the same community, or the detector's intruso_<YYYYmmdd_HHMMSS>.jpg, clip_<...>.mp4 and events.jsonl in the same directory.",
+    "claimed_root_cause": "The /evidence authorization is tied to who first inserted a tenant-less, globally unique storage_key, not to the file actually produced for that principal. The file is then resolved by bare name in a single shared directory that several principals write to, with predictable or principal-chosen names. Nothing binds the file's producer or content to the row: media_files.sha256 is unused, paths have no per-community or per-event segment, and a write fails open on conflict.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 577,
+        "scope": "analyze (POST /analyze)",
+        "description": "An authenticated resident uploads a video; the multipart filename is attacker-chosen."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 585,
+        "scope": "analyze",
+        "description": "label = clean_filename(video.filename) keeps the last 80 [A-Za-z0-9._-] characters of the user's filename and passes it to the engine as source_label."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 88,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "Evidence name is evt_{source_label}_{int(video_time*1000):08d}.jpg. It depends only on the filename and video-relative time, so independent uploads with the same filename collide."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 95,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "cv2.imwrite writes the frame to EVIDENCE_DIR/<name> and replaces any file already there, including one owned by another principal."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 248,
+        "scope": "insert_event",
+        "description": "The media_files row uses ON CONFLICT (storage_key) DO NOTHING. The first principal to insert a name keeps ownership, and a later producer's row is silently dropped."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 669,
+        "scope": "evidence (GET /evidence/{name})",
+        "description": "The resident check matches only the stored row (m.user_id = caller OR c.user_id = caller). The admin branch (line 664) also admits cameraless rows such as edge-claimed names."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 673,
+        "scope": "evidence",
+        "description": "The only file check is os.path.exists on the shared path. Nothing verifies who wrote the file or what it contains."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/app.py",
+        "line": 683,
+        "scope": "evidence",
+        "description": "FileResponse(path) returns the current file bytes, which may be another user's or community's frame, to the row's claimant."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "bd_intivision/schema_vigia.sql",
+        "line": 186,
+        "description": "storage_key text NOT NULL UNIQUE: one global namespace across all communities and users, with no tenant or event component."
+      },
+      {
+        "file": "bd_intivision/schema_vigia.sql",
+        "line": 189,
+        "description": "A sha256 column exists but insert_event never sets it, so file content is never bound to the row."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 30,
+        "description": "EVIDENCE_DIR = BASE/events is a single flat directory, commented as shared with the detector."
+      },
+      {
+        "file": "docker-compose.yml",
+        "line": 38,
+        "description": "The detector service mounts the same ./events directory as the backend (line 20), so detector output is in the namespace /evidence serves."
+      },
+      {
+        "file": "engine.py",
+        "line": 87,
+        "description": "The stamp is video-relative milliseconds, not wall clock or a random value. The attacker learns their own claimed names from the /analyze response, which includes events[].image."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 262,
+        "description": "The image subquery selects media only by event_id. When B's media insert hits the conflict, B's event shows no image while the file under that name holds B's frame."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 664,
+        "description": "The admin branch admits rows with no camera (c.id IS NULL), so names claimed by an edge device with camera_id NULL are readable by that edge's community admin whatever file later appears."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 104,
+        "description": "The /ingest image only has to match IMAGE_NAME_RE, so an edge can register names such as evt_*.jpg, intruso_*.jpg, clip_*.mp4 or events.jsonl. insert_event records a size of 0 when the file does not exist yet (app.py:241-244). This claim side belongs to h3-edge-files."
+      },
+      {
+        "file": "notifier.py",
+        "line": 27,
+        "description": "The live detector writes intruso_<YYYYmmdd_HHMMSS>.jpg (second resolution, enumerable) and appends events.jsonl (line 22) in the shared directory; main.py:141 also writes clip_<YYYYmmdd_HHMMSS>.mp4 there."
+      }
+    ],
+    "blockers": [
+      "No OS-enforced sandbox, PostgreSQL instance, or YOLO model is available in this run, so no target code was executed and the end-to-end read of another principal's frame was not observed.",
+      "Whether two independent uploads with the same sanitized filename yield an evidence event at the identical millisecond stamp depends on runtime detections, video fps, and the engine-wide ThreatScorer (engine.py:46, reused by analyze_video at engine.py:83); this was not observed locally.",
+      "cv2.imwrite replacing an existing file and PostgreSQL ON CONFLICT DO NOTHING suppressing the second row are library and DB behaviours that were not exercised.",
+      "Real-world collision likelihood depends on deployment facts: how residents name uploaded files, whether the live detector profile shares ./events with the backend in production, and who custodies edge tokens."
+    ],
+    "validation_plan": {
+      "local": "In an isolated sandbox with a throwaway PostgreSQL 16 loaded from bd_intivision/schema_vigia.sql, create two communities X and Y, resident A in X with private camera CA, resident B in Y with private camera CB, an admin in X, and an edge device in X. Point EVIDENCE_DIR at a scratch directory. (1) Write bytes 'A' to evt_clip.mp4_00000500.jpg and call backend.app.insert_event({'level':'MEDIO','score':3,'people':1,'image':'evt_clip.mp4_00000500.jpg'}, user=A, source_kind='video', camera_id=CA). (2) Overwrite the file with bytes 'B', as engine.analyze_video's cv2.imwrite would for B's upload of a file named clip.mp4, and call insert_event(same dict, user=B, source_kind='video', camera_id=CB). (3) With FastAPI TestClient and dummy session cookies, GET /evidence/evt_clip.mp4_00000500.jpg as A: expect 200 with body 'B'. As B: expect 404. list_events(B) should show B's event with image NULL. (4) Edge variant: call insert_event({'level':'MEDIO','score':3,'people':0,'image':'intruso_20261105_221530.jpg'}, None, X, 'edge', None) before the file exists, then create the file, then GET it as X's admin: expect 200. Optionally run analyze_video twice on the same tiny synthetic clip saved under the same name to confirm identical evt_ names. Stop at the first wrong-owner byte.",
+      "deployment": "Owner-observed, read-only checks on the production database and host. (a) SELECT e.id, e.community_id, e.user_id FROM events e WHERE e.source = 'video' AND NOT EXISTS (SELECT 1 FROM media_files m WHERE m.event_id = e.id). Video events that lost their media row point to storage_key collisions that already happened. (b) SELECT storage_key, community_id FROM media_files WHERE user_id IS NULL AND (storage_key LIKE 'evt\\_%' OR storage_key LIKE 'intruso\\_%' OR storage_key LIKE 'clip\\_%' OR storage_key = 'events.jsonl'). These are edge rows that claim backend or detector names. (c) Confirm whether the detector (profile live) runs on the same host and shares ./events with the backend."
+    },
+    "source_hunter": "h2-access-data",
+    "verifier": "v2-evidence",
+    "merged_duplicates": [
+      {
+        "proposed_verdict": "needs_validation",
+        "fingerprint": "engine.py:analyze_video:evidence-filename-not-owner-unique",
+        "title": "/analyze evidence filenames can collide across users, so one tenant can overwrite or inherit another tenant's evidence image",
+        "description": "analyze_video names each evidence frame evt_{label}_{stamp}.jpg, where label is the sanitised client filename and stamp is the event's millisecond offset in the video. The name has no user, community or random component, and cv2.imwrite writes it into the single shared EVIDENCE_DIR, overwriting any existing file. insert_event then inserts the media_files row with ON CONFLICT (storage_key) DO NOTHING. Two users in any communities can upload files with the same sanitised name whose events fire at the same sampled frame and fps. In that case the later upload overwrites the earlier owner's image on disk and loses its own row. The earlier owner, and that owner's community admin when admin_can_view is set, then receive the later user's private frame from /evidence, while the later user's event shows no image. An attacker who first uploads videos under a guessed victim filename, with events at the victim's frame offsets, captures the victim's frames. Uploading after a victim instead replaces the victim's stored evidence with attacker content.",
+        "claimed_root_cause": "Evidence object names derive only from the client-controlled filename and video-relative time, not from a server-generated unique or owner-scoped key. The shared directory and the global first-writer-wins storage_key let a later writer's file replace an object owned by an earlier principal.",
+        "trace": [
+          {
+            "kind": "entrypoint",
+            "file": "backend/app.py",
+            "line": 577,
+            "scope": "analyze",
+            "description": "An authenticated resident uploads a video."
+          },
+          {
+            "kind": "propagation",
+            "file": "backend/app.py",
+            "line": 585,
+            "scope": "analyze",
+            "description": "label = clean_filename(video.filename), which is deterministic for the same client filename."
+          },
+          {
+            "kind": "propagation",
+            "file": "backend/app.py",
+            "line": 603,
+            "scope": "analyze",
+            "description": "analyze_video(tmp_path, EVIDENCE_DIR, source_label=label)."
+          },
+          {
+            "kind": "propagation",
+            "file": "engine.py",
+            "line": 88,
+            "scope": "GuardianEngine.analyze_video",
+            "description": "img_name = evt_{source_label}_{stamp}.jpg, with stamp = int(video_time*1000) at line 87."
+          },
+          {
+            "kind": "propagation",
+            "file": "engine.py",
+            "line": 95,
+            "scope": "GuardianEngine.analyze_video",
+            "description": "cv2.imwrite writes into the shared directory, replacing any existing file with that name."
+          },
+          {
+            "kind": "propagation",
+            "file": "backend/app.py",
+            "line": 248,
+            "scope": "insert_event",
+            "description": "ON CONFLICT (storage_key) DO NOTHING drops the later user's media row."
+          },
+          {
+            "kind": "propagation",
+            "file": "backend/app.py",
+            "line": 669,
+            "scope": "evidence",
+            "description": "The resident query still matches the earlier owner's row by storage_key."
+          },
+          {
+            "kind": "sink",
+            "file": "backend/app.py",
+            "line": 683,
+            "scope": "evidence",
+            "description": "FileResponse serves the current file, which holds the later user's frame, to the earlier owner."
+          }
+        ],
+        "evidence": [
+          {
+            "file": "backend/app.py",
+            "line": 80,
+            "description": "The label is the tail of the sanitised client filename, chosen by the uploader."
+          },
+          {
+            "file": "engine.py",
+            "line": 76,
+            "description": "video_time = idx / fps is fully determined by frame index and container fps."
+          },
+          {
+            "file": "engine.py",
+            "line": 87,
+            "description": "The stamp is the zero-padded millisecond offset; there is no unique or owner component."
+          },
+          {
+            "file": "bd_intivision/schema_vigia.sql",
+            "line": 186,
+            "description": "storage_key is UNIQUE globally across communities."
+          },
+          {
+            "file": "backend/app.py",
+            "line": 30,
+            "description": "One EVIDENCE_DIR is shared by all users and communities."
+          },
+          {
+            "file": "backend/app.py",
+            "line": 262,
+            "description": "list_events picks the image by event_id, so the later user's event has no image after the conflict."
+          }
+        ],
+        "blockers": [
+          "Causing a collision on purpose needs attacker-supplied video content that makes the YOLO pipeline emit a MEDIO/ALTO event at the same sampled frame index and fps as the victim's event. That depends on model inference, which was not executed: this run had no OS-enforced sandbox, models or database.",
+          "The attacker must know or guess the victim's sanitised upload filename, and how predictable real client filenames are in the deployed user base cannot be determined from source."
+        ],
+        "validation_plan": {
+          "local": "Use a sandbox with a disposable PostgreSQL loaded from bd_intivision/schema_vigia.sql, two dummy communities with residents X and Y, and PersonDetector.detect stubbed to return three person boxes on every frame (or the real models). Prepare two small, visually distinct 30 fps MP4 fixtures, both named clip.mp4. POST /analyze as X, then as Y. Expect events/evt_clip.mp4_<stamp>.jpg to hold Y's frame, no media_files row for Y's events, and GET /evidence/evt_clip.mp4_<stamp>.jpg as X to return Y's frame. Stop at the first matching file."
+        },
+        "source_hunter": "h3-edge-files"
+      }
+    ]
+  },
+  {
+    "proposed_verdict": "confirmed",
+    "fingerprint": "backend/app.py:ingest:edge-supplied-evidence-storage-key",
+    "title": "Edge device can claim arbitrary evidence filenames in the shared events directory for its community",
+    "description": "POST /ingest accepts an attacker-chosen 'image' filename from an edge device. It inserts that name as media_files.storage_key for the device's community without checking that the device produced, uploaded or owns the file. storage_key is a single global UNIQUE namespace over the one shared EVIDENCE_DIR, and insert_event uses ON CONFLICT (storage_key) DO NOTHING, so the first claimant owns a name. /evidence authorises a community_admin from that row (a NULL camera passes the admin filter) and then serves whatever file currently exists under the name. An edge token of community A can therefore pre-claim a predictable evidence name that a resident of community B will later produce through /analyze (evt_{sanitised upload filename}_{8-digit millisecond offset}.jpg). When B's analysis writes the file, B's media row is silently not inserted, so B and B's admin lose access to the image, and community A's admin can fetch B's private evidence frame through /evidence. A's dashboard also shows the frame as the image of A's injected event. Any file in events/ without a media_files row can be claimed the same way after the fact. This extension depends on deployment and is not part of the confirmed claim: when the optional compose profile 'live' runs main.py on the same ./events volume, its unowned files (fixed-name events.jsonl, intruso_YYYYmmdd_HHMMSS.jpg, clip_YYYYmmdd_HHMMSS.mp4) are also claimable. live_ evidence names use microsecond timestamps and are not practically predictable.",
+    "root_cause": "insert_event trusts a client-chosen object key, validated only for its character set by IMAGE_NAME_RE, as a storage_key in a tenant-agnostic global namespace with first-writer-wins conflict handling. /evidence binds authorisation to that row, not to the principal that produced the file on disk.",
+    "intended_behavior": "An edge device should only be able to attach evidence objects that it uploaded, under a server-generated key in a namespace bound to its own device and community. A storage-key conflict must never silently drop or transfer ownership of another principal's evidence.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 619,
+        "scope": "ingest",
+        "description": "Edge request with a bearer token, resolved to the device record at line 623."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/auth.py",
+        "line": 221,
+        "scope": "edge_from_token",
+        "description": "Returns only the device id and community_id; the token carries no object-level scope."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 104,
+        "scope": "validate_event",
+        "description": "image is accepted if it matches ^[A-Za-z0-9._-]{1,120}$; there is no ownership or existence check."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 644,
+        "scope": "ingest",
+        "description": "insert_event(limpio, None, edge community_id, 'edge', camera_id)."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 248,
+        "scope": "insert_event",
+        "description": "Inserts media_files (community A, user NULL, camera NULL, storage_key=image) ON CONFLICT (storage_key) DO NOTHING, so the first claimant owns the global name."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 88,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "Victim's later /analyze builds evt_{label}_{stamp}.jpg and writes it into the same EVIDENCE_DIR (cv2.imwrite, line 95)."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 608,
+        "scope": "analyze",
+        "description": "Victim's insert_event reaches the same ON CONFLICT clause and its media row is silently not inserted."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 663,
+        "scope": "evidence",
+        "description": "Admin query for community A matches the claimed storage_key; camera NULL satisfies c.id IS NULL."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/app.py",
+        "line": 683,
+        "scope": "evidence",
+        "description": "FileResponse(os.path.join(EVIDENCE_DIR, name)) returns the victim's image to community A's admin."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "bd_intivision/schema_vigia.sql",
+        "line": 186,
+        "description": "storage_key is UNIQUE globally, not scoped by community_id."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 30,
+        "description": "A single EVIDENCE_DIR is shared by every user, community and the detector."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 71,
+        "description": "IMAGE_NAME_RE is a character-set check only."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 228,
+        "description": "The client value (basename) is used verbatim as storage_key."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 242,
+        "description": "A missing file only sets size to 0; the claim row is still inserted."
+      },
+      {
+        "file": "engine.py",
+        "line": 87,
+        "description": "The stamp is the zero-padded millisecond offset, so evidence names derive only from the uploader's filename and frame time."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 262,
+        "description": "list_events selects the image by event_id: A's injected event shows the claimed image, and the victim's event has none."
+      },
+      {
+        "file": "docker-compose.yml",
+        "line": 38,
+        "description": "The detector (profile 'live') mounts the same ./events directory; this extension depends on deployment."
+      },
+      {
+        "file": "notifier.py",
+        "line": 22,
+        "description": "The detector writes the fixed-name events.jsonl log into events_dir; this extension depends on deployment."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "Holder of an active, operator-provisioned edge-device bearer token for community A."
+      },
+      {
+        "kind": "authorization_role",
+        "description": "A community_admin account in community A to read the claimed name through /evidence (or a resident owning an edge-assigned private camera if camera_id is supplied)."
+      },
+      {
+        "kind": "data_state",
+        "description": "The attacker knows or enumerates the victim's future evidence name (sanitised upload filename plus millisecond offset), or the target file already exists in events/ without a media_files row."
+      },
+      {
+        "kind": "timing_dependency",
+        "description": "For cross-community capture, the claim must precede the victim's insert_event. Files are written during analysis and rows only afterwards, so the window lasts through the whole victim analysis."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "Community A's edge device and community A's administrator targeting evidence produced by a resident of community B.",
+      "payloads": [
+        "POST /ingest with Authorization: Bearer <edge token of community A> and body {\"level\":\"BAJO\",\"score\":0,\"people\":0,\"image\":\"evt_video.mp4_00000300.jpg\"}",
+        "GET /evidence/evt_video.mp4_00000300.jpg as community A's admin, after a community B resident analyses a file named video.mp4 whose event fires at 0.3 s"
+      ],
+      "instructions": [
+        "Source review only. No target code, database or service was executed in this run because no OS-enforced sandbox was available.",
+        "Followed the edge payload through validate_event (character-set check), insert_event (global storage_key with ON CONFLICT DO NOTHING), and the /evidence admin query and FileResponse.",
+        "Followed a victim /analyze through analyze_video naming and cv2.imwrite into the same directory, and through insert_event reaching the same conflict clause."
+      ],
+      "observed_result": "Source shows that the edge row is inserted under community A with camera NULL, and that the victim's later media insert for the same name does nothing. It also shows that the /evidence admin query for community A returns the edge row and the handler serves the file on disk, which is the victim's image. This was not observed at runtime."
+    },
+    "remediation": {
+      "strategy": "Never accept client-chosen storage keys. Generate evidence keys on the server (for example uuid4 hex) and scope them per community: UNIQUE(community_id, storage_key) plus a per-community subdirectory. For /ingest, accept the image bytes, or a reference to an object the same device uploaded, and reject unknown names. Treat a storage_key conflict as an error instead of DO NOTHING.",
+      "code_changes": [
+        {
+          "file_name": "backend/app.py",
+          "fixed_code": "# validate_event(): reject device-chosen object names\n    if e.get('image') is not None:\n        return None, 'image no se acepta: el servidor asigna el nombre de la evidencia.'\n    out['image'] = None\n\n# insert_event(): no ON CONFLICT DO NOTHING; a clash must raise instead of dropping ownership\n            cur.execute(\n                '''INSERT INTO media_files (community_id, user_id, camera_id, event_id, kind,\n                                            storage_key, size_bytes)\n                   VALUES (%s,%s,%s,%s,'image',%s,%s)''',\n                (community, owner, camera_id, event_id, image, size))"
+        },
+        {
+          "file_name": "engine.py",
+          "fixed_code": "import uuid\n...\n                img_name = f\"evt_{uuid.uuid4().hex}.jpg\"   # server-generated, never derived from client input"
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "low",
+        "reason": "The attack needs an operator-provisioned device token and an admin account in the same community. It also needs prior knowledge of a victim's upload filename and frame timing, or the name of an unowned file."
+      },
+      "impact": {
+        "score": "medium",
+        "reason": "Another community's private-camera evidence image is disclosed to community A's admin, and the victim silently loses their own evidence record."
+      },
+      "overall_severity": "low"
+    },
+    "confidence": {
+      "score": "medium",
+      "reason": "The mechanism follows directly from source: character-set-only validation, a global UNIQUE key with DO NOTHING, and row-based authorisation followed by serving the file by name. It was not executed, and practical exploitation depends on predicting the victim's evidence name."
+    },
+    "source_hunter": "h3-edge-files",
+    "verifier": "v2-evidence",
+    "merged_duplicates": []
+  },
+  {
+    "proposed_verdict": "confirmed",
+    "fingerprint": "backend/app.py:analyze:blocking-video-analysis-on-event-loop",
+    "title": "/analyze runs whole-video YOLO analysis synchronously on the only event loop, stalling the service for every tenant",
+    "description": "The analyze endpoint is declared async def but calls get_engine().analyze_video(...) directly, followed by insert_event and dispatch_alerts, all of which are synchronous. analyze_video decodes every frame and runs YOLO (plus pose when a person is detected) on every third frame, with no frame, duration or time cap. dispatch_alerts sleeps 0.5 s per event and can wait up to 5 s per MQTT publish and 10 s per Telegram request. The shipped backend image runs a single uvicorn worker. While one resident's upload is analysed, that event loop cannot accept or advance any other HTTP request, WebSocket frame, /ingest call or login from any user or community, and a client disconnect cannot cancel the work. Analysis time grows with the frame count of an upload of up to 200 MB, and the uploader controls frame count, resolution and the number of events.",
+    "root_cause": "CPU-bound and network-bound blocking work runs inline in an async FastAPI handler instead of in a bounded worker thread or process with a concurrency limit and a frame/time budget.",
+    "intended_behavior": "Video analysis should run off the event loop in a bounded queue (for example one or a few concurrent analyses, with per-user limits). It should have a maximum frame count or duration and stop when the client disconnects, and it must not delay other users' requests or live streams.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 577,
+        "scope": "analyze",
+        "description": "async def handler, which runs on the event loop thread."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 603,
+        "scope": "analyze",
+        "description": "get_engine().analyze_video(...) is called synchronously, with no asyncio.to_thread or executor."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 69,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "while True: cap.read() runs over every frame with no frame or time cap."
+      },
+      {
+        "kind": "sink",
+        "file": "engine.py",
+        "line": 78,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "YOLO inference for every sampled frame runs on the event loop thread, blocking all other requests until analysis ends."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "backend/app.py",
+        "line": 569,
+        "description": "ws_live offloads per-frame work with asyncio.to_thread, a control that /analyze does not have."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 608,
+        "description": "A synchronous DB insert per event runs on the event loop."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 351,
+        "description": "time.sleep(0.5) per event runs on the event loop inside dispatch_alerts."
+      },
+      {
+        "file": "actuator.py",
+        "line": 59,
+        "description": "wait_for_publish(timeout=5) runs for each siren or LED command sent from dispatch_alerts."
+      },
+      {
+        "file": "backend/Dockerfile",
+        "line": 25,
+        "description": "uvicorn is started without --workers, giving a single process and event loop; docker-compose.yml does not override it."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 33,
+        "description": "MAX_UPLOAD_MB caps bytes only; there is no frame or duration cap anywhere on the path."
+      },
+      {
+        "file": "engine.py",
+        "line": 74,
+        "description": "Inference runs on every sample_every-th decoded frame (3 in config.yaml)."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "Any active resident or community_admin session; limitar_subidas requires a session before the body is accepted."
+      },
+      {
+        "kind": "system_configuration",
+        "description": "The backend runs the shipped single-worker uvicorn command. With N workers, N concurrent uploads stall all of them."
+      },
+      {
+        "kind": "data_state",
+        "description": "The uploader has an active private camera, or one is auto-created by default_camera."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "An authenticated resident of any community uploading a long or frame-dense video.",
+      "payloads": [
+        "POST /analyze multipart/form-data with video=<long low-bitrate MP4 named clip.mp4, at most 200 MB> and camera=<own camera id or empty>"
+      ],
+      "instructions": [
+        "Source review only. No target code was executed because no OS-enforced sandbox was available in this run.",
+        "Confirmed that analyze is async def and calls analyze_video, insert_event and dispatch_alerts without asyncio.to_thread or run_in_executor.",
+        "Confirmed that analyze_video iterates every decoded frame with no frame or time limit and calls YOLO synchronously.",
+        "Confirmed that backend/Dockerfile starts a single uvicorn worker and that docker-compose.yml does not override the command."
+      ],
+      "observed_result": "Source shows that for each analysis, plus 0.5 s per event and any MQTT or Telegram waits, the backend's only event loop is busy with that work, so no other request or WebSocket message can be processed. The duration for a given video was not measured."
+    },
+    "remediation": {
+      "strategy": "Run analysis in a worker thread or process behind a global semaphore with per-user limits, cap frames or duration, take infer_lock for model calls, and move DB writes and alert dispatch off the event loop.",
+      "code_changes": [
+        {
+          "file_name": "backend/app.py",
+          "fixed_code": "ANALYSIS_SLOTS = asyncio.Semaphore(int(os.environ.get('MAX_CONCURRENT_ANALYSES', '1')))\n\n# inside analyze(), after the upload has been copied to tmp_path:\n        if ANALYSIS_SLOTS.locked():\n            return JSONResponse(status_code=429, content={'error': 'Hay otro análisis en curso. Inténtalo en unos minutos.'})\n        async with ANALYSIS_SLOTS:\n            engine = await asyncio.to_thread(get_engine)\n            try:\n                events = await asyncio.to_thread(engine.analyze_video, tmp_path, EVIDENCE_DIR, label)\n            except Exception:\n                log.exception('Falló el análisis del video %s', label)\n                return JSONResponse(status_code=500, content={'error': 'No se pudo analizar el video. Prueba con otro archivo.'})\n            for e in events:\n                await asyncio.to_thread(insert_event, e, user, None, 'video', cam['id'])\n            await asyncio.to_thread(dispatch_alerts, events, label)"
+        },
+        {
+          "file_name": "engine.py",
+          "fixed_code": "# GuardianEngine.__init__\n        self.max_frames = cfg.get('analysis', {}).get('max_frames', 18000)   # ~10 min at 30 fps\n\n# analyze_video loop\n            idx += 1\n            if idx > self.max_frames:\n                break\n            ...\n            with self.infer_lock:\n                detections = self.detector.detect(frame)\n                postures = set()\n                if self.pose and detections:\n                    for pr in self.pose.analyze(frame):\n                        postures |= pr['postures']"
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "medium",
+        "reason": "Any authenticated resident triggers it with one ordinary upload, and even legitimate uploads do. Accounts are provisioned by the operator; there is no self-signup."
+      },
+      "impact": {
+        "score": "high",
+        "reason": "The whole backend stalls for the analysis duration: every community's dashboard, live camera analysis, edge ingestion and login. Repeated or frame-dense uploads extend the stall, and the work continues after the client disconnects."
+      },
+      "overall_severity": "medium"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Event-loop blocking follows deterministically from source plus standard asyncio/FastAPI semantics and the single-worker command. Only the length of the stall for a given video is unmeasured."
+    },
+    "source_hunter": "h3-edge-files",
+    "verifier": "v3-resources",
+    "merged_duplicates": []
+  },
+  {
+    "proposed_verdict": "needs_validation",
+    "fingerprint": "backend/app.py:ws_live:unbounded-concurrent-inference-sessions",
+    "title": "One user can open unlimited /ws/live sessions and starve other tenants' live detection on the shared inference lock and thread pool",
+    "description": "/ws/live accepts any number of concurrent connections per user and per camera. Each connection processes as many frames as its client sends; the only pacing is the dashboard's client-side JavaScript. Each frame is decoded and run through YOLO and pose in asyncio's default thread pool, serialised on the single process-wide engine.infer_lock. A resident can open many connections and stream small valid JPEG frames back-to-back. That keeps every default-executor thread occupied while blocked on infer_lock and wins most acquisitions of the non-FIFO lock. Other residents' live sessions, in any community, then get a fraction of inference throughput, and other asyncio.to_thread work queues behind it: /ingest token lookups and inserts, WebSocket authentication and the /analyze session check. This degrades the live-detection safety function for unrelated users for as long as the connections stay open.",
+    "claimed_root_cause": "The server has no per-user or per-camera limit on concurrent live sessions or frame rate and no fair scheduling for the shared inference lock. The design relies on the browser client pacing itself.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 539,
+        "scope": "ws_live",
+        "description": "Authenticated WebSocket with no limit on concurrent connections per user or camera."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 554,
+        "scope": "ws_live",
+        "description": "resolve_camera checks ownership only; it does not count sessions."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 567,
+        "scope": "ws_live",
+        "description": "receive_bytes loop with no rate, count or application size limit."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 569,
+        "scope": "ws_live",
+        "description": "Each frame is submitted with asyncio.to_thread to the shared default executor."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 528,
+        "scope": "_process_frame",
+        "description": "cv2.imdecode runs on attacker bytes outside the lock."
+      },
+      {
+        "kind": "sink",
+        "file": "engine.py",
+        "line": 133,
+        "scope": "LiveSession.process",
+        "description": "with eng.infer_lock: detect and pose run under one process-wide lock shared by all tenants."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "engine.py",
+        "line": 48,
+        "description": "A single threading.Lock is shared by all clients (non-FIFO)."
+      },
+      {
+        "file": "backend/templates/index.html",
+        "line": 761,
+        "description": "The only pacing is client-side (one frame in flight); the comment says the model never saturates, but the server does not enforce it."
+      },
+      {
+        "file": "backend/cameras.py",
+        "line": 160,
+        "description": "resolve_camera matches an own, active, private camera and keeps no connection accounting."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 623,
+        "description": "/ingest token lookup uses asyncio.to_thread and shares the default executor."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 476,
+        "description": "The limitar_subidas session lookup uses asyncio.to_thread and shares the default executor."
+      },
+      {
+        "file": "backend/Dockerfile",
+        "line": 25,
+        "description": "A single process hosts every tenant's live sessions."
+      }
+    ],
+    "blockers": [
+      "The default executor size, min(32, CPU count + 4), and per-inference latency depend on the deployed host's CPU count and torch threading, which source does not show.",
+      "How much starvation occurs depends on threading.Lock acquisition order under contention and on frame decode cost at runtime. Nothing could be executed in this run.",
+      "Whether an upstream layer (Caddy, host firewall) limits concurrent WebSocket connections per client is a deployment fact. The repository Caddyfile sets no such limit."
+    ],
+    "validation_plan": {
+      "local": "In a sandbox with CPU and memory limits, set up a disposable database, two dummy residents in two communities, and either the real detector or a fixed-latency stub (for example sleep 50 ms under infer_lock). Open one victim connection that sends one small JPEG per response, and N = 4, 8 and 16 attacker connections that send 1 KB JPEGs back-to-back. Record the victim's frames per second and the latency of a concurrent /ingest request made with a dummy edge token. Stop once victim throughput clearly falls as about 1/(N+1).",
+      "deployment": "The owner checks the host CPU count, whether any proxy or firewall limits concurrent WebSockets per client IP or user, and the expected number of simultaneous live users."
+    },
+    "source_hunter": "h3-edge-files",
+    "verifier": "v3-resources",
+    "merged_duplicates": []
+  },
+  {
+    "proposed_verdict": "needs_validation",
+    "fingerprint": "backend/app.py:content-length-only-request-size-gates",
+    "title": "Upload and ingest size limits rely only on the declared Content-Length, so chunked bodies are fully buffered before any limit applies",
+    "description": "limitar_subidas is meant to reject /analyze uploads larger than MAX_UPLOAD_MB before they are received, but upload_too_big only reads the Content-Length header, and a missing header defaults to '0'. A request sent with Transfer-Encoding: chunked carries no Content-Length and passes. FastAPI and Starlette then parse the entire multipart body and spool the file part to a temporary file before the analyze handler runs. The handler's 200 MB counter only limits the second copy into UPLOAD_DIR. The repository Caddyfile sets no request body limit, and port 8000 is also published. An authenticated resident can therefore stream an arbitrarily large body into the container's temporary storage on the shared host disk for as long as the request lasts. /ingest has the same pattern: its 100 kB check reads only Content-Length, and request.json() buffers the whole chunked body in memory for any edge-device token holder.",
+    "claimed_root_cause": "Body size is enforced from a client-declared header instead of counting bytes actually read during parsing; neither the ASGI layer nor the proxy applies a streaming limit.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 472,
+        "scope": "limitar_subidas",
+        "description": "Middleware for POST /analyze: session check, then size check."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 482,
+        "scope": "limitar_subidas",
+        "description": "upload_too_big(request) is the only pre-receipt size control."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 183,
+        "scope": "upload_too_big",
+        "description": "int(request.headers.get('content-length', '0')): a chunked request is treated as 0 bytes."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 485,
+        "scope": "limitar_subidas",
+        "description": "call_next passes the request on; FastAPI parses the full multipart form before invoking the handler."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/app.py",
+        "line": 577,
+        "scope": "analyze",
+        "description": "The UploadFile parameter is already spooled in full to a temporary file by the framework, with no size limit, before this handler runs."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "backend/app.py",
+        "line": 181,
+        "description": "The docstring states the intent to reject huge uploads before receiving them, using Content-Length."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 598,
+        "description": "The handler's byte counter applies only while copying out of the already-parsed UploadFile."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 627,
+        "description": "/ingest checks size through Content-Length only."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 632,
+        "description": "request.json() reads the entire body into memory."
+      },
+      {
+        "file": "Caddyfile",
+        "line": 2,
+        "description": "reverse_proxy has no request_body max_size."
+      },
+      {
+        "file": "docker-compose.yml",
+        "line": 10,
+        "description": "The backend port 8000 is published directly, bypassing the proxy."
+      },
+      {
+        "file": "requirements.txt",
+        "line": 8,
+        "description": "fastapi>=0.110.0 is unpinned, so the installed Starlette/python-multipart spooling behaviour depends on the build."
+      }
+    ],
+    "blockers": [
+      "The Starlette and python-multipart versions installed in the image are unpinned. For the built image, confirm whether multipart file parts have any size limit and where they are spooled.",
+      "Whether Caddy, and any host or CDN in front of it, forwards chunked request bodies to the backend without a bound is a deployment fact.",
+      "The container's temporary-directory location, its disk capacity, and whether that disk is shared with ./events and PostgreSQL are deployment facts."
+    ],
+    "validation_plan": {
+      "local": "In a sandbox with TMPDIR on a small size-limited tmpfs (for example 64 MB) and MAX_UPLOAD_MB=1, run the backend with a dummy session. POST /analyze with Transfer-Encoding: chunked and a 5 MB multipart file part, and observe that limitar_subidas does not return 413 and that the spool file in TMPDIR grows past 1 MB before the handler's own 413. Repeat for /ingest with a dummy edge token and a 1 MB chunked JSON body, measuring process RSS growth. Stop at the first exceedance.",
+      "deployment": "The owner confirms Caddy request_body limits (none are set in the Caddyfile), whether port 8000 is reachable from the Internet, and the free space of the filesystem backing the container's /tmp."
+    },
+    "source_hunter": "h3-edge-files",
+    "verifier": "v3-resources",
+    "merged_duplicates": []
+  },
+  {
+    "proposed_verdict": "needs_validation",
+    "fingerprint": "engine.py:evidence-storage-without-quota-or-retention",
+    "title": "Evidence images are written to shared disk without per-user quota or retention, so one resident can exhaust storage for all communities",
+    "description": "Every MEDIO/ALTO event writes a full-resolution JPEG of the decoded frame into the shared events/ directory, which is bind-mounted as host ./events. /analyze produces one per 5 s of video time with no frame or duration cap, and /ws/live one per 5 s per session with unlimited sessions. No code deletes evidence files, caps per-user totals, or enforces the per-user quota the schema defines (plans.storage_gb and v_user_storage.quota_bytes). File size follows the decoded frame resolution, which the uploader controls. A compact video of a static high-resolution scene containing a person can therefore turn one upload of at most 200 MB into many large evidence files. When the shared disk fills, other tenants' evidence writes fail silently (cv2.imwrite returns False and the event is still recorded), as can anything else on the same filesystem.",
+    "claimed_root_cause": "Persisted evidence is not accounted per principal and has no quota, size cap or retention, and the write paths never enforce the schema-level quota (plans.storage_gb / v_user_storage).",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 577,
+        "scope": "analyze",
+        "description": "An authenticated resident uploads a video (or streams through /ws/live, engine.py:153)."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 85,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "One event per 5 s of video time, for the whole video, with no frame cap."
+      },
+      {
+        "kind": "sink",
+        "file": "engine.py",
+        "line": 95,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "cv2.imwrite writes a full-resolution JPEG of the frame into the shared directory permanently."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "engine.py",
+        "line": 153,
+        "description": "Live sessions persist one evidence image per event per session."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 563,
+        "description": "Live sessions write into the shared EVIDENCE_DIR."
+      },
+      {
+        "file": "bd_intivision/schema_vigia.sql",
+        "line": 13,
+        "description": "plans.storage_gb defines a per-plan storage quota."
+      },
+      {
+        "file": "bd_intivision/schema_vigia.sql",
+        "line": 311,
+        "description": "The v_user_storage quota view exists but is never referenced by application code."
+      },
+      {
+        "file": "docker-compose.yml",
+        "line": 20,
+        "description": "The evidence directory is a host bind mount shared by all tenants."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 33,
+        "description": "MAX_UPLOAD_MB caps input bytes only, not decoded output volume."
+      }
+    ],
+    "blockers": [
+      "How many bytes each event can write (the decoded-resolution limits of the bundled FFmpeg/OpenCV, and the JPEG size of attacker-chosen frames) can only be learned by running the decoder, which was not done.",
+      "The host's disk capacity, whether ./events shares a filesystem with PostgreSQL data and Docker storage, and any operator cleanup job are deployment facts."
+    ],
+    "validation_plan": {
+      "local": "In a sandbox with a 256 MB disk quota on the events directory and a stub detector that forces ALTO on every sampled frame, upload one small (at most 5 MB) synthetic MP4 of a static high-resolution scene as a dummy resident. Measure total bytes written to events/ against the input size, and stop at the quota.",
+      "deployment": "The owner checks the disk capacity and filesystem layout of ./events, whether PostgreSQL shares that filesystem, and whether any retention or cleanup runs."
+    },
+    "source_hunter": "h3-edge-files",
+    "verifier": "v3-resources",
+    "merged_duplicates": []
+  },
+  {
+    "proposed_verdict": "needs_validation",
+    "fingerprint": "wokwi/sketch.ino:onMessage:unauthenticated-siren-control-on-public-mqtt-broker",
+    "title": "Physical siren is controlled by an unauthenticated topic on a public MQTT broker",
+    "description": "The tracked config.yaml selects actuator type mqtt on the public broker broker.hivemq.com:1883 with topic guardian/demo7k3x9/siren and null credentials. The ESP32 firmware wokwi/sketch.ino hard-codes the same broker and topic, connects anonymously over plaintext TCP, and acts on every message on the topic without any sender identity, signature or freshness check. Because the device can only work on a broker that admits anonymous clients to this topic, any other anonymous client that knows or finds the topic string (it is literal in two tracked files) can do four things. (1) Publish ON:<n> to sound the siren and LED for an unbounded time: one ON:2592000 holds it about 30 days, and repeated messages extend it indefinitely. (2) Publish OFF, or WARN (which calls noTone), to silence a real ALTO alarm right after the backend's ON:10, which it can see by subscribing to the same topic. (3) Publish the command as retained, so the broker replays it each time the device reconnects. (4) Subscribe to learn in real time when the system raises MEDIO/ALTO alerts. settings.py lets the environment override only the MQTT username and password, never host or topic, and docker-compose.yml mounts the repository config.yaml read-only into backend and detector. Exploitability depends on the public broker's access policy and on whether a real device, not only the Wokwi simulation named in the sketch header, runs this firmware.",
+    "claimed_root_cause": "Siren control has no producer authentication; the only control is a topic name on a shared public broker. Neither the producer connection (actuator.py MQTTActuator) nor the consumer connection (wokwi/sketch.ino connectMqtt) uses credentials or TLS, and the consumer (wokwi/sketch.ino onMessage) neither authenticates nor bounds commands.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "wokwi/sketch.ino",
+        "line": 41,
+        "scope": "onMessage",
+        "description": "Callback for every message the broker delivers on the subscribed topic. It receives the raw payload with no publisher identity."
+      },
+      {
+        "kind": "propagation",
+        "file": "wokwi/sketch.ino",
+        "line": 52,
+        "scope": "onMessage",
+        "description": "Any payload starting with 'ON' is treated as a high-level alarm command."
+      },
+      {
+        "kind": "propagation",
+        "file": "wokwi/sketch.ino",
+        "line": 55,
+        "scope": "onMessage",
+        "description": "The duration is parsed with toInt() from the publisher's text, with no lower or upper bound."
+      },
+      {
+        "kind": "sink",
+        "file": "wokwi/sketch.ino",
+        "line": 57,
+        "scope": "onMessage",
+        "description": "tone(PIN_BUZZER, 1200) sounds the siren (LED set at line 56). Auto-off is scheduled at line 58 from the unbounded duration."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "config.yaml",
+        "line": 48,
+        "description": "Tracked actuator host is the public broker broker.hivemq.com, port 1883 (line 49)."
+      },
+      {
+        "file": "config.yaml",
+        "line": 50,
+        "description": "Tracked siren topic guardian/demo7k3x9/siren."
+      },
+      {
+        "file": "config.yaml",
+        "line": 51,
+        "description": "MQTT username and password are null (lines 51-52)."
+      },
+      {
+        "file": "settings.py",
+        "line": 18,
+        "description": "The environment can override only actuator username/password (lines 18-19), not host or topic."
+      },
+      {
+        "file": "docker-compose.yml",
+        "line": 19,
+        "description": "Repository config.yaml mounted read-only into the backend; same for the detector at line 37."
+      },
+      {
+        "file": "actuator.py",
+        "line": 44,
+        "description": "Backend producer connects in plaintext with no tls_set; credentials are applied only if set (lines 40-41)."
+      },
+      {
+        "file": "wokwi/sketch.ino",
+        "line": 24,
+        "description": "Firmware hard-codes the same topic; broker host hard-coded at line 22."
+      },
+      {
+        "file": "wokwi/sketch.ino",
+        "line": 29,
+        "description": "Plain WiFiClient (no TLS) for the MQTT connection."
+      },
+      {
+        "file": "wokwi/sketch.ino",
+        "line": 86,
+        "description": "mqtt.connect(id) with no username or password: anonymous session."
+      },
+      {
+        "file": "wokwi/sketch.ino",
+        "line": 58,
+        "description": "offAt uses 32-bit unsigned arithmetic on the unbounded duration; ON:2592000 keeps the siren on about 30 days while uptime is under about 19.7 days."
+      },
+      {
+        "file": "wokwi/sketch.ino",
+        "line": 61,
+        "description": "WARN calls noTone, silencing an active siren."
+      },
+      {
+        "file": "wokwi/sketch.ino",
+        "line": 66,
+        "description": "OFF turns siren and LED off immediately, whoever sent it."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 375,
+        "description": "Backend publishes ON on every ALTO live alert, so a subscriber can observe it and answer with OFF."
+      }
+    ],
+    "blockers": [
+      "The access policy of broker.hivemq.com (anonymous publish, subscribe, '#' wildcard and retained messages on guardian/demo7k3x9/siren) is a third-party broker fact; contacting the broker is prohibited in this run.",
+      "Whether the production backend and detector still mount the committed config.yaml unchanged (host broker.hivemq.com, this topic) is a deployment fact; the environment cannot override host or topic, but the operator may edit the file on the server.",
+      "Whether any physical ESP32 runs wokwi/sketch.ino, rather than only the Wokwi browser simulation named in its header, is unknown; with only the simulation, impact is limited to the demo.",
+      "Whether the GitHub remote github.com/AngelGabri3l/intivision is public is unverified.",
+      "No target code may be executed in this run (no OS-enforced sandbox), so the consumer behaviour was not observed."
+    ],
+    "validation_plan": {
+      "local": "Inside an OS-enforced sandbox with no external network: start a loopback-only mosquitto with allow_anonymous true. Use actuator.MQTTActuator('127.0.0.1', 1883, 'guardian/demo7k3x9/siren').trigger(10) as the legitimate producer. Drive the sketch's onMessage logic with a host-compiled harness of wokwi/sketch.ino (stubbed tone/noTone/digitalWrite/millis) or an offline Wokwi run pointed at the loopback broker. From a second anonymous client, publish 'OFF', 'WARN', 'ON:2592000' and a retained 'ON:60', and record buzzer state and offAt after each. Stop after one observation per payload.",
+      "deployment": "Owner-observed only, without publishing to or subscribing on the production topic. (1) Confirm on the server that the config.yaml mounted into guardian-backend and guardian-detector still has host broker.hivemq.com and topic guardian/demo7k3x9/siren. (2) Confirm whether a physical ESP32 is flashed with wokwi/sketch.ino. (3) Confirm from the broker operator's published documentation that broker.hivemq.com accepts anonymous publish, subscribe, '#' and retained messages. (4) Confirm whether the GitHub repository is public."
+    },
+    "source_hunter": "h4-mqtt-alerts",
+    "verifier": "v4-siren-sinks",
+    "merged_duplicates": []
+  },
+  {
+    "proposed_verdict": "needs_validation",
+    "fingerprint": "backend/app.py:get_dispatcher:global-alert-sinks-ignore-tenant-and-camera-visibility",
+    "title": "All communities' private-camera alerts go to one global Telegram chat and siren, ignoring admin_can_view",
+    "description": "Every MEDIO/ALTO event dispatched by the backend comes from a resident's own private camera: /ws/live and /analyze accept only the caller's private, active camera. dispatch_live_alert and dispatch_alerts receive only the event dict (image name, level, score, reasons) and send it to a process-wide dispatcher built once from config.yaml/env: one MQTT siren topic, one Telegram bot and chat_id, one zone name. The event's community, camera owner and admin_can_view flag are never consulted. The web application hides a private camera's events and evidence from the community admin when admin_can_view is false, audits admin views, and tells the owner 'the community administrator cannot see this camera and its events'. Yet the Telegram path posts that camera's evidence frame to the configured chat with no visibility check and no audit. It also labels every alert with the single configured zone ('Cuadra 01 - Piloto') and fires the single siren for events from any community. The schema's per-user and per-community notification_channels (with min_level) and alert_deliveries show that per-tenant routing was intended but is not implemented. If the chat includes anyone other than the trusted operator (for example the pilot community's admin or neighbours), residents of every community, including those who hid their camera from the admin, have their private-camera frames disclosed to that chat. Residents of other communities also sound the pilot site's siren.",
+    "claimed_root_cause": "get_dispatcher() (backend/app.py) builds a single global actuator and Notifier from config, and both dispatch functions drop the event's user, camera and community. Alert routing and visibility rules are therefore never applied on the external alert path.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 539,
+        "scope": "ws_live",
+        "description": "An authenticated resident of any community opens a live stream for their own camera."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/cameras.py",
+        "line": 160,
+        "scope": "resolve_camera",
+        "description": "Only the caller's own private, active camera is accepted, so every dispatched event belongs to a private camera."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 534,
+        "scope": "_process_frame",
+        "description": "Only the event dict is passed to dispatch_live_alert; user, camera_id and community are dropped (they were used for insert_event at line 533)."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 320,
+        "scope": "get_dispatcher",
+        "description": "Global dispatcher: one actuator from config.yaml, one Notifier with the configured telegram_chat_id, one zone name."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 375,
+        "scope": "dispatch_live_alert",
+        "description": "Siren command on the single configured topic, whatever the event's community."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 381,
+        "scope": "dispatch_live_alert",
+        "description": "The private camera's evidence frame is handed to the global notifier with no admin_can_view check or audit."
+      },
+      {
+        "kind": "sink",
+        "file": "notifier.py",
+        "line": 59,
+        "scope": "Notifier._send_photo",
+        "description": "requests.post to the Telegram sendPhoto API with the single configured chat_id and the private-camera image."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "backend/app.py",
+        "line": 282,
+        "description": "Web event listing hides a private camera's events from the community admin unless admin_can_view is true."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 664,
+        "description": "Evidence download applies the same admin_can_view restriction."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 726,
+        "description": "Admin views of another resident's private camera are audit-logged; the Telegram path has no equivalent."
+      },
+      {
+        "file": "backend/pages.py",
+        "line": 168,
+        "description": "The owner is told the community administrator 'no puede' (cannot) see the camera and its events when hidden."
+      },
+      {
+        "file": "backend/templates/index.html",
+        "line": 372,
+        "description": "Users are told only that MEDIO/ALTO events 'activan las alertas configuradas' (trigger the configured alerts)."
+      },
+      {
+        "file": "bd_intivision/schema_vigia.sql",
+        "line": 227,
+        "description": "notification_channels is scoped per user or per community, with min_level at line 237; it is unused by the code."
+      },
+      {
+        "file": "bd_intivision/schema_vigia.sql",
+        "line": 255,
+        "description": "alert_deliveries per event and channel is defined but unused."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 356,
+        "description": "Upload path sends the worst event's private-camera frame to the same global chat; the same siren is triggered at line 348."
+      },
+      {
+        "file": "notifier.py",
+        "line": 51,
+        "description": "Every caption uses the single configured zone, config.yaml zone_name at line 1."
+      },
+      {
+        "file": "docker-compose.yml",
+        "line": 15,
+        "description": "One TELEGRAM_CHAT_ID for the whole backend."
+      }
+    ],
+    "blockers": [
+      "Membership of the production TELEGRAM_CHAT_ID chat (set via .env, not in the repository) is unknown; if only the trusted operator is in it, the photo path does not cross a boundary.",
+      "Whether the deployment holds more than one community, or residents with private cameras hidden from the admin, is database state not visible in the repository.",
+      "Whether TELEGRAM_TOKEN and TELEGRAM_CHAT_ID are set in production is unknown (config.yaml has null; values come from .env).",
+      "No target code may be executed in this run (no OS-enforced sandbox), so the dispatch path was not exercised with dummy tenants."
+    ],
+    "validation_plan": {
+      "local": "In a sandbox with a dummy PostgreSQL loaded from bd_intivision/schema_vigia.sql: create communities X and Y, and a resident in Y with a private camera set to admin_can_view=false. Replace the dispatcher with mocks that record actuator calls and Notifier._send_photo arguments. Call dispatch_live_alert with an event produced for that camera (or _process_frame with a stubbed session). Observe that the mocked send receives Y's private frame with the single configured chat_id and the actuator receives ON:10 on the single topic, with no community or visibility lookup.",
+      "deployment": "Owner confirms who belongs to the production TELEGRAM_CHAT_ID chat, counts communities and private cameras with admin_can_view=false using a read-only query, and states where the subscribed siren device is installed."
+    },
+    "source_hunter": "h4-mqtt-alerts",
+    "verifier": "v4-siren-sinks",
+    "merged_duplicates": []
+  },
+  {
+    "proposed_verdict": "needs_validation",
+    "fingerprint": "backend/app.py:dispatch_live_alert:global-per-level-cooldown-cross-tenant-suppression",
+    "title": "Global per-level live alert cooldown lets one user's events suppress other users' and communities' alerts",
+    "description": "dispatch_live_alert keeps one module-level _last_alert dict keyed only by level ('MEDIO'/'ALTO'). It returns early whenever the same level fired anywhere in the process in the last 20 s (ALTO) or 45 s (MEDIO). A resident fully controls the JPEG frames sent over /ws/live for their own private camera, and each live session may emit an event every 5 s. With the committed weights, a stable person (1) loitering 15 s (2) with raised hands (3) scores 6 = ALTO, and person + loitering scores 3 = MEDIO. A resident can therefore keep both windows permanently occupied by re-sending such frames. While they are occupied, live MEDIO/ALTO events from every other user and community are still stored in the database, but they produce no siren or LED command of their own and no Telegram photo. The chat receives only the attacker's frames, so the operator never sees the victims' evidence. Without any attacker, ordinary activity in one community also silences alerts from another. The schema's per-channel min_level shows per-recipient alerting was intended.",
+    "claimed_root_cause": "The alert cooldown is keyed by level alone (backend/app.py LEVEL_COOLDOWN/_last_alert), not by community, camera or recipient channel, so the shared alert budget can be used up by any principal.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 539,
+        "scope": "ws_live",
+        "description": "Attacker resident (any community) streams self-chosen frames for their own private camera."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 569,
+        "scope": "ws_live",
+        "description": "Each frame goes to _process_frame in a worker thread."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 146,
+        "scope": "LiveSession.process",
+        "description": "A MEDIO/ALTO event is emitted at most every event_cooldown_s (5 s) per session."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 534,
+        "scope": "_process_frame",
+        "description": "The attacker's event is dispatched."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 372,
+        "scope": "dispatch_live_alert",
+        "description": "_last_alert[level] is set globally by the attacker's event."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/app.py",
+        "line": 370,
+        "scope": "dispatch_live_alert",
+        "description": "A victim's later event of the same level, from any user or community, hits the same key and returns at line 371: no siren command, no Telegram photo."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "backend/app.py",
+        "line": 359,
+        "description": "LEVEL_COOLDOWN = {'MEDIO': 45, 'ALTO': 20}, keyed by level only."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 360,
+        "description": "_last_alert is one module-level dict shared by all sessions, users and communities."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 364,
+        "description": "Docstring says the per-level cooldown exists to avoid saturating the channels."
+      },
+      {
+        "file": "config.yaml",
+        "line": 42,
+        "description": "event_cooldown_s 5 allows an event every 5 s per live session."
+      },
+      {
+        "file": "threat_scoring.py",
+        "line": 82,
+        "description": "hands_up adds 3; with person (1) and loitering (2, line 70) the score reaches the ALTO threshold of 6 (config.yaml line 25)."
+      },
+      {
+        "file": "bd_intivision/schema_vigia.sql",
+        "line": 237,
+        "description": "Per-channel min_level shows recipient-scoped alerting was intended."
+      }
+    ],
+    "blockers": [
+      "No target code may be executed in this run (no OS-enforced sandbox), so the suppression was not observed with a mocked dispatcher.",
+      "Whether crafted frames reliably score ALTO/MEDIO depends on YOLO person and pose detections, which were not run."
+    ],
+    "validation_plan": {
+      "local": "With get_dispatcher mocked (recording actuator and notifier calls) and time.time patched: call dispatch_live_alert for ALTO events attributed to user A at t=0, 19 and 38, and for an ALTO event from user B in another community at t=10 and t=30. Record that only A's events reach the mocked actuator and notifier."
+    },
+    "source_hunter": "h4-mqtt-alerts",
+    "verifier": "v5-alert-logic",
+    "merged_duplicates": []
+  },
+  {
+    "proposed_verdict": "needs_validation",
+    "fingerprint": "backend/app.py:dispatch_alerts:upload-alerts-bypass-cooldown",
+    "title": "Uploaded-video alerts bypass the live cooldown: unbounded siren commands per upload and one Telegram alert per upload",
+    "description": "dispatch_alerts, called from POST /analyze, publishes one actuator command (ON:10 or WARN) for every MEDIO/ALTO event found in an uploaded video and sends one Telegram photo per upload. It has no cooldown and no per-user or per-community rate limit, and it never touches the live path's LEVEL_COOLDOWN, which exists to keep the shared channels from flooding. Any resident or community_admin can upload arbitrary video (up to MAX_UPLOAD_MB=200) against their own private camera. The event count is bounded only by video time divided by 5 s, and video time is the frame index divided by the container-declared fps, which the uploader controls. One upload can therefore yield hundreds or thousands of siren commands, keeping the shared siren on throughout dispatch. Repeated small uploads post uploader-chosen frames (any image with a detected person, red boxes added) to the shared chat as 'ALERTA DE SEGURIDAD' for the configured zone, at the upload rate instead of at most once per 20/45 s. Such bursts can hit Telegram's per-chat bot limits, and notifier failures are only logged, so other communities' alerts sent in that period may be lost. analyze is an async def handler that calls dispatch_alerts synchronously. Each event therefore also blocks the event loop for time.sleep(0.5) plus up to 5 s of wait_for_publish, stalling every other HTTP and WebSocket client during dispatch. The preceding synchronous analyze_video call is a separate /analyze resource issue owned by another unit.",
+    "claimed_root_cause": "The upload alert path (backend/app.py dispatch_alerts) applies no rate control or deduplication to the shared actuator and Telegram sinks, unlike its live sibling, and runs blocking per-event sleeps and publish waits on the async request path.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 577,
+        "scope": "analyze",
+        "description": "An authenticated resident uploads an arbitrary video for their own private camera (async def handler)."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 603,
+        "scope": "analyze",
+        "description": "analyze_video returns all MEDIO/ALTO events found in the video."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 85,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "At most one event per 5 s of video time, where video time = idx / container fps (lines 62, 76)."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 609,
+        "scope": "analyze",
+        "description": "dispatch_alerts is called synchronously inside the async handler."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 344,
+        "scope": "dispatch_alerts",
+        "description": "Loops over every event with no cooldown or count limit."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 348,
+        "scope": "dispatch_alerts",
+        "description": "One siren ON command per ALTO event (WARN per MEDIO at line 350)."
+      },
+      {
+        "kind": "propagation",
+        "file": "actuator.py",
+        "line": 59,
+        "scope": "MQTTActuator._send",
+        "description": "Waits up to 5 s for each publish acknowledgement on the calling (event-loop) thread."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 351,
+        "scope": "dispatch_alerts",
+        "description": "time.sleep(0.5) per event blocks the event loop."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/app.py",
+        "line": 356,
+        "scope": "dispatch_alerts",
+        "description": "Telegram photo of the uploader-chosen frame on every upload, independent of LEVEL_COOLDOWN."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "backend/app.py",
+        "line": 333,
+        "description": "Docstring states one MQTT order per event, intended for viewing in Wokwi."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 359,
+        "description": "LEVEL_COOLDOWN applies only to the live path (dispatch_live_alert)."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 33,
+        "description": "Uploads accepted up to MAX_UPLOAD_MB=200."
+      },
+      {
+        "file": "engine.py",
+        "line": 62,
+        "description": "fps comes from the uploaded container's metadata, so the uploader controls the video-time rate."
+      },
+      {
+        "file": "notifier.py",
+        "line": 65,
+        "description": "Telegram rejections (for example rate limits) are only logged; no retry."
+      },
+      {
+        "file": "wokwi/sketch.ino",
+        "line": 58,
+        "description": "Each ON resets offAt, so back-to-back commands keep the siren on continuously."
+      }
+    ],
+    "blockers": [
+      "No target code may be executed in this run (no OS-enforced sandbox), so the per-upload command count and event-loop stall were not observed.",
+      "The number of events per crafted upload depends on YOLO detections and on OpenCV's reading of container fps, which were not run.",
+      "Telegram Bot API per-chat rate-limit behaviour is a third-party fact; contacting Telegram is prohibited."
+    ],
+    "validation_plan": {
+      "local": "In a sandbox with no network: call dispatch_alerts with 50 synthetic ALTO events and a mocked dispatcher. Record 50 actuator.trigger calls, one send_photo and about 25 s blocked on the calling thread. Then, through FastAPI TestClient with analyze_video mocked to return those events and a dummy session, measure that a concurrent GET /health is delayed until dispatch finishes. Compare with dispatch_live_alert, which allows one ALTO trigger per 20 s.",
+      "deployment": "Owner reviews existing backend logs for Telegram rejection entries (HTTP 429) following bursts of uploads, without generating new load."
+    },
+    "source_hunter": "h4-mqtt-alerts",
+    "verifier": "v5-alert-logic",
+    "merged_duplicates": []
+  },
+  {
+    "proposed_verdict": "needs_validation",
+    "fingerprint": "engine.py:GuardianEngine.analyze_video:shared-scorer-state-across-uploads",
+    "title": "Uploaded-video threat scoring reuses one ThreatScorer across users, so one upload changes the next user's event levels",
+    "description": "GuardianEngine is a process-wide singleton. analyze_video scores every uploaded video with the single self.scorer created in __init__ and never resets it, whereas each live session gets its own ThreatScorer ('scorer propio por cliente'). ThreatScorer keeps a persistence deque and presence_start between evaluate() calls, and uploads are analysed one after another on the event loop. Say a resident's video ends with a person present who first appeared at a large video time (video time = frame index / container-declared fps, which the uploader controls). presence_start stays set. In the next uploaded video, from any user in any community, a person present from the first sampled frame then gets a negative loiter_time and loses the 2 loitering points until presence breaks. That turns person+loitering (3, MEDIO) into BAJO, so no event, siren or Telegram alert, and turns person+loitering+hands_up (6, ALTO) into MEDIO (WARN instead of siren). Conversely, a video ending with present frames makes the next video's first detection immediately 'stable'. The effect needs the attacker's upload to be analysed immediately before the victim's and affects only uploaded-video analysis, not live streams.",
+    "claimed_root_cause": "engine.py analyze_video uses the engine-level self.scorer, whose temporal state (history, presence_start) persists across analyses by different users, instead of a fresh ThreatScorer per analysis as LiveSession does.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 577,
+        "scope": "analyze",
+        "description": "Resident A uploads a crafted video; resident B (any community) later uploads theirs."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 603,
+        "scope": "analyze",
+        "description": "Both uploads are analysed by the same singleton engine from get_engine (lines 57-62)."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 46,
+        "scope": "GuardianEngine.__init__",
+        "description": "self.scorer is created once per process."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 83,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "self.scorer.evaluate is called for every video with no reset between analyses."
+      },
+      {
+        "kind": "propagation",
+        "file": "threat_scoring.py",
+        "line": 54,
+        "scope": "ThreatScorer.evaluate",
+        "description": "presence_start is set only when None, so the previous video's value is kept while a person stays present."
+      },
+      {
+        "kind": "propagation",
+        "file": "threat_scoring.py",
+        "line": 56,
+        "scope": "ThreatScorer.evaluate",
+        "description": "loiter_time = now_ts - presence_start is negative for the victim's early frames, so no loitering points (line 70)."
+      },
+      {
+        "kind": "sink",
+        "file": "engine.py",
+        "line": 85,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "The victim's event is created, or not, from the altered level."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "engine.py",
+        "line": 122,
+        "description": "LiveSession creates its own ThreatScorer per client, showing per-client state was intended."
+      },
+      {
+        "file": "engine.py",
+        "line": 110,
+        "description": "Docstring: 'scorer propio por cliente' (one scorer per client)."
+      },
+      {
+        "file": "engine.py",
+        "line": 62,
+        "description": "fps comes from the uploaded container, so the uploader controls the video-time scale."
+      },
+      {
+        "file": "threat_scoring.py",
+        "line": 28,
+        "description": "The persistence history deque survives across analyze_video calls."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 61,
+        "description": "A single GuardianEngine serves all users."
+      }
+    ],
+    "blockers": [
+      "No target code may be executed in this run (no OS-enforced sandbox).",
+      "The concrete level change depends on YOLO person and pose detections for the crafted frames; models were not run."
+    ],
+    "validation_plan": {
+      "local": "In a sandbox: construct GuardianEngine with PersonDetector.detect monkeypatched to return one person box on chosen frames and pose disabled. Write two tiny synthetic videos with OpenCV: A has a person only in its final frames at a declared fps of 0.01; B has a person in every frame at 1 fps for 30 s. Run analyze_video(A) then analyze_video(B) on the same engine, and compare B's events and reasons with analyze_video(B) on a fresh engine."
+    },
+    "source_hunter": "h4-mqtt-alerts",
+    "verifier": "v5-alert-logic",
+    "merged_duplicates": []
+  },
+  {
+    "proposed_verdict": "needs_validation",
+    "fingerprint": "docker-compose.yml/backend-port-8000-published-bypasses-caddy-ingress",
+    "title": "Backend port 8000 is published on all host interfaces, bypassing the Caddy TLS ingress that client_ip and cookie security rely on",
+    "description": "docker-compose.yml publishes the uvicorn backend as \"8000:8000\" with no bind address, so it listens on every host interface in plain HTTP. Caddy (80/443) is meant to be the only ingress and reaches backend:8000 over the compose network, so it does not need this publication. The backend's trust decisions assume all traffic comes through Caddy. A client that connects to :8000 directly, compared with one that goes through Caddy: (1) gets no TLS, so the /login password, the session cookie, /ingest bearer tokens and /ws/live frames cross the network in cleartext; (2) gets a session cookie without Secure and no HSTS unless it sends X-Forwarded-Proto itself; (3) chooses its own client IP whenever uvicorn sees it from a private address. In that case client_ip returns the last X-Forwarded-For element the attacker sent. The attacker can rotate it to escape the 30-failure per-IP login throttle, or set it to a victim's IP to throttle that victim, who reaches the backend through Caddy with the same last-hop IP. The same spoofed value is written to sessions.ip and to the view_camera audit_log ip. Docker presents internet clients from a private gateway address (172.16.0.0/12) when docker-proxy handles the connection, for example IPv6 clients reaching an IPv4-only bridge, rootless Docker or Docker Desktop, or for any host on the server's private LAN. Caddy itself adds no auth, rate or size controls (Caddyfile:1-3), so no application authorization is bypassed. Fix: remove the backend 'ports' entry or bind it to 127.0.0.1:8000:8000, and trust X-Forwarded-For and X-Forwarded-Proto only from Caddy's address.",
+    "claimed_root_cause": "docker-compose.yml publishes the backend port on all host interfaces even though Caddy reaches the backend internally. backend/auth.py assumes every private-network peer is the trusted Caddy proxy (client_ip accepts X-Forwarded-For from any RFC1918, loopback or ULA peer). cookie_is_secure and HSTS assume TLS terminates at Caddy.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "docker-compose.yml",
+        "line": 10,
+        "scope": "services.backend.ports",
+        "description": "\"8000:8000\" publishes the backend on every host interface, next to Caddy's 80/443, so clients can reach uvicorn without Caddy."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/Dockerfile",
+        "line": 25,
+        "scope": "CMD uvicorn backend.app:app",
+        "description": "uvicorn binds 0.0.0.0:8000 in plain HTTP. Its default forwarded-allow-ips is 127.0.0.1, so it does not rewrite the client for proxied traffic and request.client.host is whatever peer address Docker presents."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/auth.py",
+        "line": 239,
+        "scope": "_REDES_DE_CONFIANZA",
+        "description": "The trusted networks include 172.16.0.0/12, 10.0.0.0/8 and 192.168.0.0/16, which cover Docker bridge gateways and private LANs, not only Caddy's container address."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/auth.py",
+        "line": 260,
+        "scope": "client_ip",
+        "description": "If the peer is private, the last X-Forwarded-For element is returned as the client IP (line 263). A direct client that Docker NATs to the gateway therefore controls this value."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/app.py",
+        "line": 440,
+        "scope": "login_submit",
+        "description": "The spoofable IP keys the per-IP login throttle (throttled at 440, register_failure at 449) and is stored as the session IP (454)."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "Caddyfile",
+        "line": 2,
+        "description": "Caddy proxies to backend:8000 over the compose network and applies no other control, so the host publication of 8000 is not needed for the intended ingress."
+      },
+      {
+        "file": "backend/auth.py",
+        "line": 257,
+        "description": "The client_ip docstring says an Internet client writing X-Forwarded-For by hand cannot pose as another IP. That holds only if no internet client reaches uvicorn from a private address."
+      },
+      {
+        "file": "backend/auth.py",
+        "line": 203,
+        "description": "cookie_is_secure trusts the request scheme or X-Forwarded-Proto from any peer. A direct HTTP login without that header gets a session cookie without Secure."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 157,
+        "description": "HSTS is emitted only when cookie_is_secure is true, so direct-port responses never carry HSTS."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 731,
+        "description": "The audit_log ip for an admin viewing another user's private camera comes from client_ip, so a direct-port client that appears private can forge it."
+      },
+      {
+        "file": "docker-compose.yml",
+        "line": 57,
+        "description": "Caddy publishes 80 and 443, the intended TLS ingress for intivision.online."
+      },
+      {
+        "file": "backend/templates/index.html",
+        "line": 712,
+        "description": "The UI cites http://localhost:8000 only as a development path; nothing in the repo directs production users or edge devices to :8000."
+      }
+    ],
+    "blockers": [
+      "The host firewall or cloud security-group state for TCP 8000 (IPv4 and IPv6) on the intivision.online host is not in the repository, so source cannot show whether the published port is reachable from the internet.",
+      "The peer address uvicorn sees for published-port traffic depends on the Docker daemon setup: userland-proxy, iptables/ip6tables, IPv6 clients reaching an IPv4-only network, and rootless or Desktop port drivers. Only a private gateway address lets client_ip accept attacker-supplied X-Forwarded-For.",
+      "Whether any user or edge mini PC is configured to use http://<host>:8000 is a deployment fact. In-repo clients default to localhost or https://intivision.online.",
+      "No OS-enforced sandbox was available, so the compose stack could not be run to observe the peer address or the Set-Cookie flags."
+    ],
+    "validation_plan": {
+      "local": "In an isolated Docker host with external networking disabled, start the backend service against a throwaway local Postgres with a dummy DATABASE_URL. From a separate network namespace, send one POST /login with dummy credentials and 'X-Forwarded-For: 203.0.113.7' to the published port, over IPv4 and, if the daemon has IPv6 enabled, over IPv6. Check whether the 'Acceso fallido desde …' log line records 203.0.113.7 (spoof accepted) or the real client address. After one dummy successful login over the direct port, confirm the Set-Cookie lacks Secure and the response lacks Strict-Transport-Security.",
+      "deployment": "Owner, on the intivision.online host: run 'docker port guardian-backend' and 'ss -ltnp' to list the 8000 listeners, read /etc/docker/daemon.json (userland-proxy, ip6tables, rootless), and review firewall or security-group rules for 8000 on IPv4 and IPv6. From an owner-controlled external machine, send one GET /health to the server IP on :8000 and one failed login carrying 'X-Forwarded-For: 203.0.113.7', then read the backend log to see which IP was recorded."
+    },
+    "source_hunter": "h5-deploy-secrets",
+    "verifier": "v6-deploy",
+    "merged_duplicates": []
+  },
+  {
+    "proposed_verdict": "needs_validation",
+    "fingerprint": "Caddyfile/basic-auth-bcrypt-hash-in-git-history",
+    "title": "Caddy basic_auth bcrypt hash for user 'angel', once the only gate on the production site, remains in git history and on a remote branch tip",
+    "description": "Commit b99bce4 (2026-11-01) added to the tracked Caddyfile, inside the intivision.online site block, 'basic_auth { angel $2a$14$M… }': a well-formed 60-character bcrypt hash at cost 14. At that commit backend/app.py had no application authentication: /, /events, /evidence/{name}, /analyze, /ws/live and /ingest had no session dependency. That made this credential the only gate on the production dashboard until login arrived in 41b30dc. Port 8000 was already published, so the gate could also be bypassed directly at the time. cfca76c added 'Caddyfile' to .gitignore, which has no effect on a tracked file. 7345cc9 ('Caddyfile sin contraseña ni hash', i.e. Caddyfile without password or hash) removed the block and the ignore entry at the tip only. The hash is still in eight commits reachable from main (b99bce4, cfca76c, 89b2072, 747a21c, 352d16a, b11bddb, 1229858, 41b30dc). It is also at the tip of remote-tracking branch origin/chore/aplanar-bd_intivision (747a21c), where GitHub's file view would show it if the branch still exists. Anyone who can read the repository (assumed public) gets an offline guessing oracle with no rate limit or lockout. Cost 14 slows guessing to roughly a few hundred guesses per second per high-end GPU (estimate, not measured): a dictionary-grade or reused password is recoverable, a long random one is not. Nothing in the commits shows the password was rotated. The cfca76c attempt to ignore the Caddyfile suggests a server-local copy was intended.",
+    "claimed_root_cause": "A production basic_auth password hash was committed into the tracked Caddyfile. Removing it at the tip (7345cc9) did not rewrite history or delete the stale branch, and nothing in source shows the password was rotated.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "Caddyfile",
+        "line": 1,
+        "scope": "intivision.online site block at commit b99bce4",
+        "description": "b99bce4 added basic_auth with user 'angel' and a $2a$14$M… bcrypt hash at lines 2-4 of that version of the file, guarding the whole production site."
+      },
+      {
+        "kind": "propagation",
+        "file": ".gitignore",
+        "line": 1,
+        "scope": ".gitignore history (commits cfca76c and 7345cc9)",
+        "description": "cfca76c appended 'Caddyfile' to .gitignore. Ignore rules do not untrack a tracked file, so the hash stayed in every later commit until 7345cc9 removed both the hash and the ignore entry."
+      },
+      {
+        "kind": "sink",
+        "file": "Caddyfile",
+        "line": 2,
+        "scope": "Caddyfile at 7345cc9 and HEAD 5999fbf",
+        "description": "The block was deleted at the tip only. Reachable history and the origin/chore/aplanar-bd_intivision tip (747a21c) still serve the hash to any repository reader."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "Caddyfile",
+        "line": 1,
+        "description": "git show b99bce4:Caddyfile shows 'basic_auth { angel $2a$14$M… }' (60 characters, cost 14). git log --all -S basic_auth lists only b99bce4 (added) and 7345cc9 (removed)."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 1,
+        "description": "git show b99bce4:backend/app.py shows routes /events, /evidence/{name}, /analyze, /ws/live, /ingest and / with no authentication dependency. Session login arrived only in 41b30dc, so basic_auth was then the only gate."
+      },
+      {
+        "file": "docker-compose.yml",
+        "line": 10,
+        "description": "\"8000:8000\" has been published since 2218cb2, so from b99bce4 to 41b30dc the basic_auth gate could also be bypassed through the direct port (historical)."
+      },
+      {
+        "file": ".gitignore",
+        "line": 1,
+        "description": "cfca76c added 'Caddyfile' to .gitignore without untracking it, and 7345cc9 removed that entry. The current .gitignore has no Caddyfile rule."
+      }
+    ],
+    "blockers": [
+      "Whether the Caddyfile deployed on the intivision.online host (mounted into guardian-caddy) still has basic_auth with this hash is a deployment fact outside the repository.",
+      "Only the credential owner knows whether the plaintext password is weak enough for offline guessing at bcrypt cost 14, or reused for their application account, server SSH, GitHub or e-mail.",
+      "GitHub visibility of the repository and of branch chore/aplanar-bd_intivision was not checked, because GitHub access is out of scope. It is assumed public, and local remote-tracking refs may be stale."
+    ],
+    "validation_plan": {
+      "deployment": "Owner inspects /etc/caddy/Caddyfile inside guardian-caddy on the production host for a basic_auth entry whose hash starts with $2a$14$M. The credential owner confirms whether that password is used anywhere else. If either is true, rotate the password and keep the new hash out of git. Delete the stale chore/aplanar-bd_intivision branch and, if the hash is still in use, rewrite history. Treat the old password as exposed either way."
+    },
+    "source_hunter": "h5-deploy-secrets",
+    "verifier": "v6-deploy",
+    "merged_duplicates": []
+  }
+]

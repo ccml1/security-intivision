@@ -1,0 +1,299 @@
+[
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "backend/app.py:evidence:first-claimant-storage-key-serves-shared-evidence-file",
+    "title": "Video evidence names are not unique per owner, so /evidence can serve one user's frame to whoever claimed the name first",
+    "description": "POST /analyze names each evidence frame evt_<sanitised upload filename>_<8-digit video-time ms>.jpg and writes it into the single EVIDENCE_DIR that every user, community and the optional live detector share. The name has no user, community or random part. insert_event stores the name as media_files.storage_key, which is globally UNIQUE, using ON CONFLICT (storage_key) DO NOTHING. GET /evidence/{name} authorises the caller against that one row and then streams whatever file is currently on disk under the name.\n\nIf two residents, in the same or different communities, upload files with the same sanitised name and both analyses fire an event at the same video-time stamp, the second cv2.imwrite replaces the first owner's frame. The second owner's media row is silently dropped. The first owner, and that owner's admin when the camera is visible to them, are then served the second user's private frame. The second user's event shows no image. Run in reverse, a deliberate later upload replaces a victim's stored evidence with attacker content. A deliberate earlier upload pre-claims names so the attacker reads a victim's later frame. Source establishes the path; the cross-owner read was not observed because no target code was run. The edge /ingest pre-claim of arbitrary names is a separate missing control, recorded under backend/app.py:ingest:edge-supplied-evidence-storage-key.",
+    "claimed_root_cause": "Evidence object keys for uploaded videos come only from the client filename and video-relative time (engine.py:87-88), not from a server-generated, owner-scoped key. They are written by bare name into one shared directory, and the global storage_key keeps the first claimant's row while a later writer replaces the file. /evidence binds authorisation to the row, not to the file actually produced for that principal: sha256 is never populated and there is no per-owner path segment.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 577,
+        "scope": "analyze (POST /analyze)",
+        "description": "An authenticated resident uploads a video; the multipart filename is chosen by the uploader."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 585,
+        "scope": "analyze",
+        "description": "label = clean_filename(video.filename) is deterministic for a given client filename. It is passed to the engine as source_label at line 603."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 88,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "img_name = evt_{source_label}_{stamp}.jpg, where stamp is int(video_time*1000) zero-padded (line 87) and video_time = idx / fps (line 76)."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 95,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "cv2.imwrite writes the frame to EVIDENCE_DIR/<img_name> with no existence check, so it replaces a file already there."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 248,
+        "scope": "insert_event",
+        "description": "The media_files INSERT uses ON CONFLICT (storage_key) DO NOTHING, so the first claimant keeps the row and a later producer's row is dropped. It is called per event at line 608."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 669,
+        "scope": "evidence (GET /evidence/{name})",
+        "description": "The resident query matches only the stored row (m.user_id = caller OR c.user_id = caller); the admin query (lines 662-664) matches by community and camera visibility."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 673,
+        "scope": "evidence",
+        "description": "The only file check is os.path.exists on EVIDENCE_DIR/<name>; nothing ties the bytes to the row's owner."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/app.py",
+        "line": 683,
+        "scope": "evidence",
+        "description": "FileResponse(path) returns the current bytes under the name, which may be another principal's frame, to the row's claimant."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "bd_intivision/schema_vigia.sql",
+        "line": 186,
+        "description": "storage_key text NOT NULL UNIQUE is one namespace across all communities and users."
+      },
+      {
+        "file": "bd_intivision/schema_vigia.sql",
+        "line": 189,
+        "description": "A sha256 column exists, but insert_event (backend/app.py:245-249) never sets it, so the file content is not bound to the row."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 30,
+        "description": "EVIDENCE_DIR = BASE/events is a single flat directory, commented as shared with the detector."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 80,
+        "description": "clean_filename keeps the last 80 sanitised characters of the client filename, so identical client names give identical labels."
+      },
+      {
+        "file": "engine.py",
+        "line": 87,
+        "description": "The stamp is the zero-padded video-relative millisecond offset, with no wall-clock, owner or random component."
+      },
+      {
+        "file": "engine.py",
+        "line": 46,
+        "description": "One ThreatScorer is shared by every analyze_video call (used at line 83), so which sampled frames produce MEDIO/ALTO events depends on prior analyses as well as the video. This makes a collision at a given stamp runtime-dependent."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 610,
+        "description": "The /analyze response returns the events list including each image name, so an uploader learns the names they now own."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 262,
+        "description": "The event's image is selected only by event_id, so after a conflict the later uploader's event shows no image while the file holds their frame."
+      },
+      {
+        "file": "docker-compose.yml",
+        "line": 38,
+        "description": "The optional detector service (profile live, line 41) mounts the same ./events directory as the backend (line 20)."
+      }
+    ],
+    "blockers": [
+      "No OS-enforced sandbox, PostgreSQL instance or YOLO model was available, so no target code ran. The end-to-end result, where the first claimant's GET /evidence returns another principal's frame, was not observed.",
+      "Whether two uploads with the same sanitised filename produce events at the identical millisecond stamp depends on model detections, container fps, analysis wall-clock hour (sensitive_hours) and the engine-wide ThreatScorer state carried between analyses (engine.py:46, 83). This can only be settled by running the pipeline."
+    ],
+    "validation_plan": {
+      "local": "In an isolated sandbox with no network, load bd_intivision/schema_vigia.sql into a throwaway PostgreSQL 16. Create communities X and Y, resident A in X with private camera CA, and resident B in Y with private camera CB. Point EVIDENCE_DIR at a scratch directory and stub PersonDetector.detect to return one person box on every frame (pose disabled), with sensitive_hours covering the current hour. Make two visually distinct 2-second 30 fps MP4 fixtures, both uploaded with the filename clip.mp4. With FastAPI TestClient and dummy sessions, POST /analyze as A on camera CA, recreate the engine so the scorer state is fresh, then POST /analyze as B on camera CB. Record events[].image from both responses. If a name is shared, GET /evidence/<name> as A: expect 200 with B's frame bytes, compared by hash with the file B's analysis wrote. GET as B: expect 404. /events as B should show its event with image null. Stop at the first wrong-owner byte match.",
+      "deployment": "Owner-observed, read-only query on the production database: SELECT e.id, e.community_id, e.user_id FROM events e WHERE e.source = 'video' AND NOT EXISTS (SELECT 1 FROM media_files m WHERE m.event_id = e.id). Video events with no media row are storage_key collisions that already happened; for each, compare the colliding storage_key's owning row (media_files.user_id/community_id) with the event's owner."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "backend/app.py:ingest:edge-supplied-evidence-storage-key",
+    "title": "/ingest lets an edge device register any evidence filename as its community's media, without proof it produced the file",
+    "description": "POST /ingest takes an 'image' name from the edge device and checks only its character set. insert_event then stores that name as a media_files.storage_key for the device's community, with camera NULL unless an assigned camera is given. It does not check that the device produced or uploaded the file, and the file need not exist yet: the size is simply recorded as 0. No endpoint exists through which an edge device can upload an image, so the name can only refer to files other principals write into the shared EVIDENCE_DIR.\n\nstorage_key is globally unique with first-writer-wins conflict handling. A device holding a valid token for community A can therefore pre-claim names that will later be produced elsewhere. GET /evidence/{name} then lets community A's admin read the file through the c.id IS NULL branch. Examples are a community B resident's predictable evt_<filename>_<ms>.jpg from /analyze, or a hidden private camera's video evidence in community A itself. It can also claim the live detector's unowned intruso_*/clip_*/events.jsonl files when that profile shares ./events. When the victim's analysis later inserts its row, the row is silently dropped, so the victim loses access to their own evidence image. live_ names use microsecond timestamps and are not practically predictable. The path is source-complete but was not executed; the cross-community read also depends on predicting the victim's upload filename.",
+    "claimed_root_cause": "insert_event accepts a client-chosen object key from /ingest, validated only by IMAGE_NAME_RE, as a storage_key in a tenant-agnostic global namespace with ON CONFLICT DO NOTHING. Nothing binds the key to an object the edge device produced. /evidence authorises from that row and serves the file found by bare name in the shared directory.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 619,
+        "scope": "ingest (POST /ingest)",
+        "description": "Edge request with a bearer token, resolved to the device at line 623."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/auth.py",
+        "line": 221,
+        "scope": "edge_from_token",
+        "description": "Returns only the device id and community_id for an active token hash; the token carries no object-level scope."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 104,
+        "scope": "validate_event",
+        "description": "image is accepted if it matches ^[A-Za-z0-9._-]{1,120}$; there is no ownership or existence check."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 644,
+        "scope": "ingest",
+        "description": "insert_event(limpio, None, edge community_id, 'edge', camera_id), where camera_id is None unless the device names a camera assigned to it."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 248,
+        "scope": "insert_event",
+        "description": "The media_files row (community A, user NULL, camera NULL, storage_key = image) is inserted with ON CONFLICT (storage_key) DO NOTHING, so the first claimant owns the global name."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 95,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "A victim's later /analyze writes evt_{label}_{stamp}.jpg (line 88) into the same EVIDENCE_DIR."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 608,
+        "scope": "analyze",
+        "description": "The victim's insert_event reaches the same ON CONFLICT clause, and its media row is not inserted."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 664,
+        "scope": "evidence (GET /evidence/{name})",
+        "description": "The admin query for community A matches the claimed storage_key; camera NULL satisfies c.id IS NULL."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/app.py",
+        "line": 683,
+        "scope": "evidence",
+        "description": "FileResponse(os.path.join(EVIDENCE_DIR, name)) returns the file currently on disk, which is the victim's image, to community A's admin."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "backend/app.py",
+        "line": 71,
+        "description": "IMAGE_NAME_RE is a character-set check only."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 228,
+        "description": "The client value (after basename) is used verbatim as storage_key."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 244,
+        "description": "A missing file only sets the size to 0; the claim row is still inserted."
+      },
+      {
+        "file": "bd_intivision/schema_vigia.sql",
+        "line": 186,
+        "description": "storage_key is UNIQUE globally, not scoped by community_id."
+      },
+      {
+        "file": "backend/cameras.py",
+        "line": 171,
+        "description": "camera_id from the edge is bound to the device's community and assignment. This shows the design scopes edge input to the device, but no equivalent binding exists for image."
+      },
+      {
+        "file": "backend/test_ingest.py",
+        "line": 22,
+        "description": "The documented edge payload sends no image field, and the backend has no edge upload endpoint, so a legitimate device has no file of its own to reference."
+      },
+      {
+        "file": "engine.py",
+        "line": 87,
+        "description": "Video evidence names derive only from the uploader's filename and the frame's video-time milliseconds, so they can be enumerated for a guessed filename."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 262,
+        "description": "list_events selects the image by event_id: A's injected event shows the claimed image, and the victim's event has none."
+      },
+      {
+        "file": "docker-compose.yml",
+        "line": 38,
+        "description": "The detector (profile live) mounts the same ./events directory. It writes events.jsonl and intruso_<YYYYmmdd_HHMMSS>.jpg (notifier.py:22, 27) and clip_<YYYYmmdd_HHMMSS>.mp4 (main.py:141) without media rows; this extension depends on deployment."
+      }
+    ],
+    "blockers": [
+      "No OS-enforced sandbox, PostgreSQL instance or YOLO model was available, so no target code ran. Neither the edge claim row nor the admin's 200 response with the victim's bytes was observed, so the run's rules do not allow a confirmed verdict.",
+      "The cross-community capture requires predicting the victim's sanitised upload filename. Its stamp is enumerable at 1/fps*sample_every steps, but the filename is not visible to community A. How predictable real resident filenames are, and whether the live detector shares ./events in production, are deployment facts not in source."
+    ],
+    "validation_plan": {
+      "local": "In an isolated sandbox with no network, load bd_intivision/schema_vigia.sql into a throwaway PostgreSQL 16. Create communities A and B, admin AA in A, an active edge device in A with a known dummy token, and resident RB in B with private camera CB. Point EVIDENCE_DIR at a scratch directory. With FastAPI TestClient: (1) POST /ingest with the edge token and body {\"level\":\"BAJO\",\"score\":0,\"people\":0,\"image\":\"evt_clip.mp4_00000500.jpg\"}; expect 200 and a media_files row (community A, user_id NULL, camera_id NULL, size_bytes 0). (2) Write a marker JPEG to EVIDENCE_DIR/evt_clip.mp4_00000500.jpg and call insert_event({'level':'MEDIO','score':3,'people':1,'image':'evt_clip.mp4_00000500.jpg'}, user=RB, source_kind='video', camera_id=CB), as analyze_video plus /analyze would. Expect no new media_files row. (3) GET /evidence/evt_clip.mp4_00000500.jpg as AA: expect 200 with the marker bytes. As RB: expect 404. Stop at the first cross-community byte match.",
+      "deployment": "Owner-observed, read-only query on the production database: SELECT storage_key, community_id, created_at FROM media_files WHERE user_id IS NULL AND (storage_key LIKE 'evt\\_%' OR storage_key LIKE 'live\\_%' OR storage_key LIKE 'intruso\\_%' OR storage_key LIKE 'clip\\_%' OR storage_key = 'events.jsonl'). Rows returned are edge claims of backend- or detector-generated names. Also confirm whether any edge device legitimately sends an image field, and whether the live profile runs on the same host as the backend."
+    }
+  },
+  {
+    "verdict": "rejected",
+    "fingerprint": "engine.py:analyze_video:evidence-filename-not-owner-unique",
+    "title": "/analyze evidence filenames can collide across users (duplicate)",
+    "description": "A hunter-proposed duplicate of the evidence-collision candidate. analyze_video names evidence evt_{label}_{stamp}.jpg from the client filename and video time, writes it into the shared EVIDENCE_DIR, and insert_event keeps the first storage_key claimant.",
+    "claimed_root_cause": "Evidence object names derive only from the client-controlled filename and video-relative time, not from a server-generated unique or owner-scoped key, and the global first-writer-wins storage_key lets a later writer replace an earlier owner's file.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 577,
+        "scope": "analyze (POST /analyze)",
+        "description": "An authenticated resident uploads a video."
+      },
+      {
+        "kind": "propagation",
+        "file": "engine.py",
+        "line": 88,
+        "scope": "GuardianEngine.analyze_video",
+        "description": "img_name = evt_{source_label}_{stamp}.jpg."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 248,
+        "scope": "insert_event",
+        "description": "ON CONFLICT (storage_key) DO NOTHING drops the later row."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/app.py",
+        "line": 683,
+        "scope": "evidence",
+        "description": "FileResponse serves the current file to the earlier row owner."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "engine.py",
+        "line": 87,
+        "description": "The stamp is the zero-padded video-time millisecond offset with no owner component."
+      },
+      {
+        "file": "bd_intivision/schema_vigia.sql",
+        "line": 186,
+        "description": "storage_key is globally UNIQUE."
+      }
+    ],
+    "reason": "merged into backend/app.py:evidence:first-claimant-storage-key-serves-shared-evidence-file. It has the same source root cause and the same sink; its evidence was folded into that record."
+  }
+]

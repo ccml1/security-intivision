@@ -1,0 +1,163 @@
+[
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "Caddyfile/basic-auth-bcrypt-hash-in-git-history",
+    "title": "Caddy basic_auth bcrypt hash for user 'angel', once the only gate on the production site, remains in git history and on a remote-tracking branch tip",
+    "description": "Commit b99bce4 (2026-11-01) added to the tracked Caddyfile, inside the intivision.online site block, 'basic_auth { angel $2a$14$M... }': a well-formed 60-character bcrypt hash at cost 14. At that commit backend/app.py had no application authentication (/, /events, /evidence/{name}, /analyze, /ws/live and /ingest took no credentials), so this credential was the only gate on the production dashboard until session login arrived in 41b30dc; port 8000 was already published, so the gate could also be bypassed directly at the time. cfca76c added 'Caddyfile' to .gitignore, which has no effect on an already-tracked file. 7345cc9 ('Caddyfile sin contrasena ni hash') removed the block and the ignore entry at the tip only. The hash remains in eight commits reachable from main (b99bce4, cfca76c, 89b2072, 747a21c, 352d16a, b11bddb, 1229858, 41b30dc) and at the tip of remote-tracking branch origin/chore/aplanar-bd_intivision (747a21c). The origin remote is a GitHub repository. Anyone who can read the repository gets an offline guessing oracle with no rate limit or lockout; cost 14 makes guessing slow, so only a weak, dictionary-grade or reused password would be recoverable. The current Caddyfile, which docker-compose mounts into guardian-caddy, has no basic_auth, and the application now has its own login, so the hash guards nothing in the current source. Whether this exposure matters depends on facts outside the repository: whether any reader outside the credential holders can read the repository, whether the deployed Caddyfile still contains this hash, and whether the password is weak or reused for another account. Nothing in the commits shows the password was rotated.",
+    "claimed_root_cause": "A production basic_auth password hash was committed into the tracked Caddyfile. Removing it at the tip (7345cc9) did not rewrite history or delete the stale remote branch, and nothing in source shows the password was rotated.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "Caddyfile",
+        "line": 1,
+        "scope": "intivision.online site block at commit b99bce4",
+        "description": "Commit b99bce4 added basic_auth with user 'angel' and a $2a$14$M... bcrypt hash at lines 2-4 of that version of the file, guarding the whole production site."
+      },
+      {
+        "kind": "propagation",
+        "file": ".gitignore",
+        "line": 1,
+        "scope": ".gitignore history (commits cfca76c and 7345cc9)",
+        "description": "Commit cfca76c appended 'Caddyfile' to .gitignore. Ignore rules do not untrack a tracked file, so the hash stayed in every later commit until 7345cc9 removed both the hash and the ignore entry."
+      },
+      {
+        "kind": "sink",
+        "file": "Caddyfile",
+        "line": 2,
+        "scope": "Caddyfile at 7345cc9 and HEAD 5999fbf",
+        "description": "The block was deleted at the tip only. Reachable history on main and the origin/chore/aplanar-bd_intivision tip (747a21c) still contain the hash for any repository reader."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "Caddyfile",
+        "line": 1,
+        "description": "git show b99bce4:Caddyfile shows 'basic_auth { angel $2a$14$M... }' (60 characters, cost 14). git log --all -S basic_auth lists only b99bce4 (added) and 7345cc9 (removed); scanning every commit in git rev-list --all finds the block in exactly eight commits."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 1,
+        "description": "git show b99bce4:backend/app.py shows routes /health, /ws/live, /analyze, /ingest, /events, /evidence/{name} and / with no authentication dependency or token check. Session login arrived only in 41b30dc, so basic_auth was then the only gate."
+      },
+      {
+        "file": "docker-compose.yml",
+        "line": 10,
+        "description": "\"8000:8000\" has been published since 2218cb2, so between b99bce4 and 41b30dc the basic_auth gate could also be bypassed through the direct port (historical)."
+      },
+      {
+        "file": "docker-compose.yml",
+        "line": 60,
+        "description": "The deployed Caddy configuration is the host's ./Caddyfile bind-mounted read-only, so the live gate depends on the host's working copy rather than on git history."
+      },
+      {
+        "file": ".gitignore",
+        "line": 1,
+        "description": "cfca76c added 'Caddyfile' to .gitignore without untracking it, and 7345cc9 removed that entry. The current .gitignore (lines 1-14) has no Caddyfile rule."
+      }
+    ],
+    "blockers": [
+      "Whether anyone other than the credential holders can read the repository (GitHub visibility of the repository and of branch chore/aplanar-bd_intivision) was not checked, because GitHub access is out of scope; local remote-tracking refs may also be stale.",
+      "Whether the Caddyfile deployed on the intivision.online host (bind-mounted into guardian-caddy) still contains basic_auth with this hash is a deployment fact outside the repository.",
+      "Only the credential owner knows whether the plaintext password is weak enough for offline guessing at bcrypt cost 14, or is reused for an application account, server SSH, GitHub or e-mail."
+    ],
+    "validation_plan": {
+      "deployment": "Owner checks three facts without sending any traffic to the site: (1) on GitHub, whether AngelGabri3l/intivision is public or who has read access, and whether branch chore/aplanar-bd_intivision still exists; (2) on the production host, whether /etc/caddy/Caddyfile inside guardian-caddy (the host's ./Caddyfile) contains a basic_auth entry whose hash starts with $2a$14$M; (3) the credential holder privately confirms whether that password is used for any other account. If the repository is readable beyond the credential holders and either (2) or (3) is true, the exposure is live: rotate the password, keep the new hash out of git, delete the stale branch and consider rewriting history."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "docker-compose.yml/backend-port-8000-published-bypasses-caddy-ingress",
+    "title": "Backend port 8000 is published on all host interfaces, bypassing the Caddy TLS ingress that client_ip and cookie security rely on",
+    "description": "docker-compose.yml publishes the uvicorn backend as \"8000:8000\" with no host IP, so Docker exposes it on every host interface over plain HTTP. Caddy (80/443) is the intended ingress and already reaches backend:8000 over the compose default network, so it does not need this publication. The backend's trust decisions assume all traffic arrives through Caddy. A client that connects to :8000 directly instead of through Caddy: (1) gets no TLS, so a /login password, the session cookie, /ingest bearer tokens and /ws/live frames sent that way cross the network in cleartext; (2) gets a session cookie without Secure and no HSTS unless it sends X-Forwarded-Proto: https itself; (3) chooses its own client IP whenever uvicorn sees its connection from a private address, because client_ip then returns the last X-Forwarded-For element. In case (3) the attacker can rotate that value to escape the 30-failures-per-15-minutes per-IP login throttle, or set it to a victim's IP so that the victim, who reaches the backend through Caddy with the same last-hop IP, is throttled at /login. The same forged value is stored in sessions.ip and in the view_camera audit_log ip. The per-account lockout in the database (auth.authenticate) is keyed by account, not IP, so rotating IPs does not allow unlimited guessing against one account. Uvicorn sees a private peer address for directly published traffic when docker-proxy handles the connection (for example IPv6 clients reaching an IPv4-only bridge network, or rootless Docker or Docker Desktop port drivers), or when the client is a host on the server's private network. With the default Linux iptables DNAT path for IPv4 the real public source address is preserved and the forged header is ignored. Caddy adds no authentication, rate or size control (Caddyfile lines 1-3), so no application authorization is bypassed by skipping it. Fix: remove the backend ports entry or bind it to 127.0.0.1:8000:8000, and trust X-Forwarded-For and X-Forwarded-Proto only from Caddy's address.",
+    "claimed_root_cause": "docker-compose.yml publishes the backend port on all host interfaces even though Caddy reaches the backend internally. backend/auth.py treats every RFC1918, loopback or ULA peer as the trusted Caddy proxy when reading X-Forwarded-For, and cookie_is_secure and the HSTS header assume TLS terminates at Caddy.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "docker-compose.yml",
+        "line": 10,
+        "scope": "services.backend.ports",
+        "description": "\"8000:8000\" publishes the backend on every host interface, next to Caddy's 80/443, so clients can reach uvicorn without going through Caddy."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/Dockerfile",
+        "line": 25,
+        "scope": "CMD uvicorn backend.app:app",
+        "description": "uvicorn binds 0.0.0.0:8000 in plain HTTP with no proxy-header flags, so request.client.host is whatever peer address Docker presents."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/auth.py",
+        "line": 239,
+        "scope": "_REDES_DE_CONFIANZA",
+        "description": "The trusted networks include 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 and fc00::/7, which cover Docker bridge gateways and private LANs, not only Caddy's container address."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/auth.py",
+        "line": 260,
+        "scope": "client_ip",
+        "description": "If the peer is private, the last X-Forwarded-For element is returned as the client IP (line 263). A direct client that reaches uvicorn from a private address therefore controls this value."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/app.py",
+        "line": 440,
+        "scope": "login_submit",
+        "description": "The client-controlled IP keys the per-IP login throttle (checked at 440, failure registered at 449) and is stored as the session IP (454)."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "Caddyfile",
+        "line": 2,
+        "description": "Caddy proxies to backend:8000 over the compose network and applies no other control, so the host publication of 8000 is not needed for the intended ingress."
+      },
+      {
+        "file": "backend/auth.py",
+        "line": 257,
+        "description": "The client_ip docstring states that an Internet client writing X-Forwarded-For by hand cannot pose as another IP. That holds only if no internet client reaches uvicorn from a private address."
+      },
+      {
+        "file": "backend/auth.py",
+        "line": 203,
+        "description": "cookie_is_secure trusts the request scheme or X-Forwarded-Proto from any peer. A direct HTTP login without that header gets a session cookie without Secure (set_session_cookie, line 209)."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 157,
+        "description": "Strict-Transport-Security is emitted only when cookie_is_secure is true, so direct-port responses never carry HSTS."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 731,
+        "description": "The audit_log ip recorded when a community_admin views another user's private camera comes from client_ip, so a direct-port client seen from a private address can forge it."
+      },
+      {
+        "file": "backend/auth.py",
+        "line": 283,
+        "description": "throttled() blocks an IP after LOGIN_IP_MAX_FAILURES (default 30, line 34) failures in the window, keyed only by the client_ip string."
+      },
+      {
+        "file": "docker-compose.yml",
+        "line": 57,
+        "description": "Caddy publishes 80 and 443, the intended TLS ingress for intivision.online."
+      },
+      {
+        "file": "backend/templates/index.html",
+        "line": 712,
+        "description": "The UI mentions http://localhost:8000 only as a development path; nothing in the repository directs production users or edge devices to port 8000."
+      }
+    ],
+    "blockers": [
+      "The host firewall or cloud security-group state for TCP 8000 (IPv4 and IPv6) on the intivision.online host is not in the repository, so source cannot show whether the published port is reachable from the internet.",
+      "The peer address uvicorn sees for published-port traffic depends on the Docker daemon setup (userland-proxy, iptables/ip6tables, IPv6 clients reaching an IPv4-only network, rootless or Desktop port drivers) and on which hosts share the server's private network. Only a private peer address lets client_ip accept attacker-supplied X-Forwarded-For.",
+      "Whether any user or edge mini PC is configured to use http://<host>:8000 is a deployment fact; in-repo clients default to localhost or https://intivision.online.",
+      "No OS-enforced sandbox was available, so the compose stack could not be run locally to observe the peer address or the Set-Cookie flags."
+    ],
+    "validation_plan": {
+      "local": "On an isolated Docker host with external networking disabled, start only the backend service against a throwaway local Postgres with a dummy DATABASE_URL and one dummy user. From a separate network namespace, send one POST /login with dummy wrong credentials and the header 'X-Forwarded-For: 203.0.113.7' to the published port over IPv4 and, if the daemon has IPv6 enabled, over IPv6. Read the 'Acceso fallido desde ...' log line to see whether 203.0.113.7 (header trusted) or the real client address was recorded. Then perform one dummy successful login over the direct port and check that Set-Cookie for vigia_session lacks Secure and the response lacks Strict-Transport-Security.",
+      "deployment": "Owner, on the intivision.online host: run 'docker port guardian-backend' and 'ss -ltnp' to list the 8000 listeners, read /etc/docker/daemon.json (userland-proxy, ip6tables, rootless), and review host firewall and cloud security-group rules for TCP 8000 on IPv4 and IPv6. If 8000 is open externally, from an owner-controlled external machine send one GET /health to the server IP on :8000 and one failed login carrying 'X-Forwarded-For: 203.0.113.7', then read the guardian-backend log to see which IP was recorded."
+    }
+  }
+]

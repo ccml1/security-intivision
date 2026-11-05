@@ -1,0 +1,1264 @@
+[
+  {
+    "coverage_id": "backend%2Fapp.py%23%2Fcameras%20routes::backend%2Fcameras.py%23_scope::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Access%20control",
+    "canonical_refs": {
+      "surface": "backend/app.py#/cameras routes",
+      "boundary": "backend/cameras.py#_scope",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Access control"
+    },
+    "surface": "GET/POST /cameras, GET /cameras/{id}, POST /cameras/{id}/visibilidad",
+    "boundary": "Camera scope, ownership and admin_can_view toggle",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Access control on camera resources",
+    "starting_paths": [
+      "backend/app.py",
+      "backend/cameras.py",
+      "backend/pages.py",
+      "bd_intivision/schema_vigia.sql"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Tenant and object-isolation attack classes"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Resource and file handling",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Wildcard",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "No CI, release, signing, plugin or updater surface in source; unpinned dependencies are an obvious-things hardening check."
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "No LLM, prompt or tool-calling code in source."
+      },
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "No native code in repository; OpenCV/FFmpeg decoders are third-party and out of source scope."
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "No native app, deep link, webview bridge or local IPC surface."
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "in_progress",
+    "agent_id": "h2-access-data",
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter": "h2-access-data"
+  },
+  {
+    "coverage_id": "backend%2Fapp.py%23GET%20%2F%20and%20GET%20%2Fevents::backend%2Fapp.py%23list_events::profile%2Fquick%2Fall-in-scope-subsystems::DATA-ISOLATION-AND-LIFECYCLE.md%23Derived-data%20and%20disclosure%20attack%20classes",
+    "canonical_refs": {
+      "surface": "backend/app.py#GET / and GET /events",
+      "boundary": "backend/app.py#list_events",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Derived-data and disclosure attack classes"
+    },
+    "surface": "Event listing in dashboard and JSON API",
+    "boundary": "Role-based event scoping SQL",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Event list scoping and derived-data disclosure",
+    "starting_paths": [
+      "backend/app.py",
+      "bd_intivision/schema_vigia.sql"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Tenant and object-isolation attack classes",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Derived-data and disclosure attack classes"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Resource and file handling",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Wildcard",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "No CI, release, signing, plugin or updater surface in source; unpinned dependencies are an obvious-things hardening check."
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "No LLM, prompt or tool-calling code in source."
+      },
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "No native code in repository; OpenCV/FFmpeg decoders are third-party and out of source scope."
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "No native app, deep link, webview bridge or local IPC surface."
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "in_progress",
+    "agent_id": "h2-access-data",
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter": "h2-access-data"
+  },
+  {
+    "coverage_id": "backend%2Fapp.py%23GET%20%2Fevidence%2F%7Bname%7D::backend%2Fapp.py%23evidence%20media_files%20scope%20query::profile%2Fquick%2Fall-in-scope-subsystems::DATA-ISOLATION-AND-LIFECYCLE.md%23Tenant%20and%20object-isolation%20attack%20classes",
+    "canonical_refs": {
+      "surface": "backend/app.py#GET /evidence/{name}",
+      "boundary": "backend/app.py#evidence media_files scope query",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Tenant and object-isolation attack classes"
+    },
+    "surface": "GET /evidence/{name}",
+    "boundary": "Evidence ownership/community scope via media_files",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Tenant/object isolation of evidence images",
+    "starting_paths": [
+      "backend/app.py",
+      "bd_intivision/schema_vigia.sql",
+      "engine.py"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Tenant and object-isolation attack classes"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Resource and file handling",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Wildcard",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "No CI, release, signing, plugin or updater surface in source; unpinned dependencies are an obvious-things hardening check."
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "No LLM, prompt or tool-calling code in source."
+      },
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "No native code in repository; OpenCV/FFmpeg decoders are third-party and out of source scope."
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "No native app, deep link, webview bridge or local IPC surface."
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "in_progress",
+    "agent_id": "h2-access-data",
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter": "h2-access-data"
+  },
+  {
+    "coverage_id": "backend%2Fapp.py%23POST%20%2Fanalyze%20and%20WS%20%2Fws%2Flive%20media%20processing::backend%2Fapp.py%23limitar_subidas::profile%2Fquick%2Fall-in-scope-subsystems::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Quota%20and%20scheduling%20attack%20classes",
+    "canonical_refs": {
+      "surface": "backend/app.py#POST /analyze and WS /ws/live media processing",
+      "boundary": "backend/app.py#limitar_subidas",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Quota and scheduling attack classes"
+    },
+    "surface": "Uploaded video and live JPEG frame processing",
+    "boundary": "Upload size limit, infer_lock and per-user limits",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Shared CPU/worker exhaustion by authenticated users",
+    "starting_paths": [
+      "backend/app.py",
+      "engine.py",
+      "detector.py",
+      "pose_detector.py"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Quota and scheduling attack classes",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Resource accumulation attack classes"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Access control",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Resource and file handling",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Wildcard",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "No CI, release, signing, plugin or updater surface in source; unpinned dependencies are an obvious-things hardening check."
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "No LLM, prompt or tool-calling code in source."
+      },
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "No native code in repository; OpenCV/FFmpeg decoders are third-party and out of source scope."
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "No native app, deep link, webview bridge or local IPC surface."
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "in_progress",
+    "agent_id": "h3-edge-files",
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter": "h3-edge-files"
+  },
+  {
+    "coverage_id": "backend%2Fapp.py%23POST%20%2Fanalyze::backend%2Fapp.py%23clean_filename::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Resource%20and%20file%20handling",
+    "canonical_refs": {
+      "surface": "backend/app.py#POST /analyze",
+      "boundary": "backend/app.py#clean_filename",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Resource and file handling"
+    },
+    "surface": "POST /analyze multipart video upload",
+    "boundary": "Upload filename sanitisation and evidence file naming",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Path handling, temp files and evidence file collisions",
+    "starting_paths": [
+      "backend/app.py",
+      "engine.py",
+      "notifier.py"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Resource and file handling",
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Composite-key and namespace collision"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Access control",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Wildcard",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "No CI, release, signing, plugin or updater surface in source; unpinned dependencies are an obvious-things hardening check."
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "No LLM, prompt or tool-calling code in source."
+      },
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "No native code in repository; OpenCV/FFmpeg decoders are third-party and out of source scope."
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "No native app, deep link, webview bridge or local IPC surface."
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "in_progress",
+    "agent_id": "h3-edge-files",
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter": "h3-edge-files"
+  },
+  {
+    "coverage_id": "backend%2Fapp.py%23POST%20%2Fingest::backend%2Fauth.py%23edge_from_token::profile%2Fquick%2Fall-in-scope-subsystems::WEB-PROTOCOL-AND-AUTH.md%23API-key%20scope%20and%20resource%20binding",
+    "canonical_refs": {
+      "surface": "backend/app.py#POST /ingest",
+      "boundary": "backend/auth.py#edge_from_token",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "WEB-PROTOCOL-AND-AUTH.md#API-key scope and resource binding"
+    },
+    "surface": "POST /ingest (edge device JSON event)",
+    "boundary": "Edge bearer token to community/camera binding",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Edge token scope and resource binding",
+    "starting_paths": [
+      "backend/app.py",
+      "backend/auth.py",
+      "backend/cameras.py",
+      "bd_intivision/schema_vigia.sql"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Business logic",
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+      "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+      "WEB-PROTOCOL-AND-AUTH.md#Validation rules",
+      "WEB-PROTOCOL-AND-AUTH.md#API-key scope and resource binding",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Blob and signed-reference overreach"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Access control",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Resource and file handling",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Wildcard",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "No CI, release, signing, plugin or updater surface in source; unpinned dependencies are an obvious-things hardening check."
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "No LLM, prompt or tool-calling code in source."
+      },
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "No native code in repository; OpenCV/FFmpeg decoders are third-party and out of source scope."
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "No native app, deep link, webview bridge or local IPC surface."
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "in_progress",
+    "agent_id": "h3-edge-files",
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter": "h3-edge-files"
+  },
+  {
+    "coverage_id": "backend%2Fapp.py%23POST%20%2Flogin::backend%2Fauth.py%23authenticate::profile%2Fquick%2Fall-in-scope-subsystems::WEB-PROTOCOL-AND-AUTH.md%23Browser-session%20attack%20classes",
+    "canonical_refs": {
+      "surface": "backend/app.py#POST /login",
+      "boundary": "backend/auth.py#authenticate",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Browser-session attack classes"
+    },
+    "surface": "POST /login form (identifier, password)",
+    "boundary": "Password check, per-account lockout and per-IP throttle",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Browser-session: session fixation/invalidation, cookie scope and transport",
+    "starting_paths": [
+      "backend/app.py",
+      "backend/auth.py",
+      "backend/templates/login.html"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Business logic",
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+      "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+      "WEB-PROTOCOL-AND-AUTH.md#Validation rules",
+      "WEB-PROTOCOL-AND-AUTH.md#Browser-session attack classes",
+      "WEB-PROTOCOL-AND-AUTH.md#Host and forwarded-header trust"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Access control",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Resource and file handling",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Wildcard",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "No CI, release, signing, plugin or updater surface in source; unpinned dependencies are an obvious-things hardening check."
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "No LLM, prompt or tool-calling code in source."
+      },
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "No native code in repository; OpenCV/FFmpeg decoders are third-party and out of source scope."
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "No native app, deep link, webview bridge or local IPC surface."
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "in_progress",
+    "agent_id": "h1-auth-session",
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter": "h1-auth-session"
+  },
+  {
+    "coverage_id": "backend%2Fapp.py%23WS%20%2Fws%2Flive::backend%2Fauth.py%23origin_allowed::profile%2Fquick%2Fall-in-scope-subsystems::CLIENT-SIDE.md%23Cross-site%20WebSocket%20request%20use",
+    "canonical_refs": {
+      "surface": "backend/app.py#WS /ws/live",
+      "boundary": "backend/auth.py#origin_allowed",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "CLIENT-SIDE.md#Cross-site WebSocket request use"
+    },
+    "surface": "WebSocket /ws/live?camera=",
+    "boundary": "WebSocket Origin check plus one-time cookie session check",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Cross-site WebSocket hijacking and stale session on open sockets",
+    "starting_paths": [
+      "backend/app.py",
+      "backend/auth.py",
+      "backend/cameras.py",
+      "backend/templates/index.html"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [
+      "CLIENT-SIDE.md#Core discipline",
+      "CLIENT-SIDE.md#Universal moves",
+      "CLIENT-SIDE.md#Validation rules",
+      "CLIENT-SIDE.md#Cross-site WebSocket request use",
+      "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+      "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+      "WEB-PROTOCOL-AND-AUTH.md#Validation rules",
+      "WEB-PROTOCOL-AND-AUTH.md#Session fixation and invalidation"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Resource and file handling",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Wildcard",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "No CI, release, signing, plugin or updater surface in source; unpinned dependencies are an obvious-things hardening check."
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "No LLM, prompt or tool-calling code in source."
+      },
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "No native code in repository; OpenCV/FFmpeg decoders are third-party and out of source scope."
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "No native app, deep link, webview bridge or local IPC surface."
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "in_progress",
+    "agent_id": "h1-auth-session",
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter": "h1-auth-session"
+  },
+  {
+    "coverage_id": "backend%2Fapp.py%23dispatch_alerts%20and%20dispatch_live_alert::backend%2Fapp.py%23LEVEL_COOLDOWN::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Business%20logic",
+    "canonical_refs": {
+      "surface": "backend/app.py#dispatch_alerts and dispatch_live_alert",
+      "boundary": "backend/app.py#LEVEL_COOLDOWN",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Business logic"
+    },
+    "surface": "Alert dispatch to siren and Telegram",
+    "boundary": "Cross-community isolation of shared alerting resources",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Shared alert channel abuse across users and communities",
+    "starting_paths": [
+      "backend/app.py",
+      "notifier.py",
+      "actuator.py",
+      "engine.py"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Business logic",
+    "selected_companion_blocks": [
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Quota and scheduling attack classes"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Access control",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Resource and file handling",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Wildcard",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "No CI, release, signing, plugin or updater surface in source; unpinned dependencies are an obvious-things hardening check."
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "No LLM, prompt or tool-calling code in source."
+      },
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "No native code in repository; OpenCV/FFmpeg decoders are third-party and out of source scope."
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "No native app, deep link, webview bridge or local IPC surface."
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "in_progress",
+    "agent_id": "h4-mqtt-alerts",
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter": "h4-mqtt-alerts"
+  },
+  {
+    "coverage_id": "backend%2Fapp.py%23middleware%20seguridad::backend%2Fapp.py%23cross_site_request::profile%2Fquick%2Fall-in-scope-subsystems::WEB-PROTOCOL-AND-AUTH.md%23Ordinary%20CSRF",
+    "canonical_refs": {
+      "surface": "backend/app.py#middleware seguridad",
+      "boundary": "backend/app.py#cross_site_request",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Ordinary CSRF"
+    },
+    "surface": "All unsafe-method (POST) routes via middleware seguridad",
+    "boundary": "Origin / Sec-Fetch-Site cross-site check and SameSite=Lax cookie",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Ordinary CSRF",
+    "starting_paths": [
+      "backend/app.py",
+      "backend/auth.py"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+      "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+      "WEB-PROTOCOL-AND-AUTH.md#Validation rules",
+      "WEB-PROTOCOL-AND-AUTH.md#Ordinary CSRF",
+      "WEB-PROTOCOL-AND-AUTH.md#Cookie scope and transport"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Resource and file handling",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Wildcard",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "No CI, release, signing, plugin or updater surface in source; unpinned dependencies are an obvious-things hardening check."
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "No LLM, prompt or tool-calling code in source."
+      },
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "No native code in repository; OpenCV/FFmpeg decoders are third-party and out of source scope."
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "No native app, deep link, webview bridge or local IPC surface."
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "in_progress",
+    "agent_id": "h1-auth-session",
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter": "h1-auth-session"
+  },
+  {
+    "coverage_id": "backend%2Fmanage.py%23CLI%20subcommands::container%20shell%20access::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Access%20control",
+    "canonical_refs": {
+      "surface": "backend/manage.py#CLI subcommands",
+      "boundary": "container shell access",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Access control"
+    },
+    "surface": "backend/manage.py operator CLI",
+    "boundary": "Shell access to the backend container",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Access control",
+    "starting_paths": [
+      "backend/manage.py"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "not_applicable",
+    "agent_id": null,
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [
+      "The CLI runs only with shell access inside the backend container and DATABASE_URL, which already grants full DB authority; there is no lower-trust principal crossing a boundary through it."
+    ],
+    "hunter": null
+  },
+  {
+    "coverage_id": "backend%2Fpages.py%23server-rendered%20HTML::backend%2Fpages.py%23esc::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Injection",
+    "canonical_refs": {
+      "surface": "backend/pages.py#server-rendered HTML",
+      "boundary": "backend/pages.py#esc",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Injection"
+    },
+    "surface": "Server-rendered HTML pages and client innerHTML re-injection",
+    "boundary": "HTML escaping of stored user/edge data",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Stored XSS and SQL injection",
+    "starting_paths": [
+      "backend/app.py",
+      "backend/pages.py",
+      "backend/cameras.py",
+      "backend/templates/index.html",
+      "backend/templates/camara.html",
+      "backend/templates/camaras.html",
+      "backend/templates/login.html"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Injection",
+    "selected_companion_blocks": [
+      "CLIENT-SIDE.md#Core discipline",
+      "CLIENT-SIDE.md#Universal moves",
+      "CLIENT-SIDE.md#Validation rules",
+      "CLIENT-SIDE.md#DOM-based XSS"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Access control",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Resource and file handling",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Wildcard",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "No CI, release, signing, plugin or updater surface in source; unpinned dependencies are an obvious-things hardening check."
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "No LLM, prompt or tool-calling code in source."
+      },
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "No native code in repository; OpenCV/FFmpeg decoders are third-party and out of source scope."
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "No native app, deep link, webview bridge or local IPC surface."
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "in_progress",
+    "agent_id": "h2-access-data",
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter": "h2-access-data"
+  },
+  {
+    "coverage_id": "config.yaml%23actuator%20mqtt%20topic::actuator.py%23MQTTActuator::profile%2Fquick%2Fall-in-scope-subsystems::PROTOCOLS-RPC-AND-MESSAGING.md%23Untrusted%20producer%20treated%20as%20control%20plane",
+    "canonical_refs": {
+      "surface": "config.yaml#actuator mqtt topic",
+      "boundary": "actuator.py#MQTTActuator",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "PROTOCOLS-RPC-AND-MESSAGING.md#Untrusted producer treated as control plane"
+    },
+    "surface": "MQTT siren topic on configured broker",
+    "boundary": "Broker authentication and topic secrecy for siren control",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Untrusted MQTT producer controlling the siren",
+    "starting_paths": [
+      "actuator.py",
+      "config.yaml",
+      "settings.py",
+      "wokwi/sketch.ino",
+      "mosquitto.conf",
+      "main.py"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+      "PROTOCOLS-RPC-AND-MESSAGING.md#Universal moves",
+      "PROTOCOLS-RPC-AND-MESSAGING.md#Validation rules",
+      "PROTOCOLS-RPC-AND-MESSAGING.md#Untrusted producer treated as control plane",
+      "PROTOCOLS-RPC-AND-MESSAGING.md#Topic, routing-key, and subscription scope gaps"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Access control",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Resource and file handling",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Wildcard",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "No CI, release, signing, plugin or updater surface in source; unpinned dependencies are an obvious-things hardening check."
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "No LLM, prompt or tool-calling code in source."
+      },
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "No native code in repository; OpenCV/FFmpeg decoders are third-party and out of source scope."
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "No native app, deep link, webview bridge or local IPC surface."
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "in_progress",
+    "agent_id": "h4-mqtt-alerts",
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter": "h4-mqtt-alerts"
+  },
+  {
+    "coverage_id": "docker-compose.yml%23published%20ports::Caddyfile%23reverse_proxy::profile%2Fquick%2Fall-in-scope-subsystems::CLOUD-AND-DEPLOYMENT.md%23Unexpected%20service%20or%20management-plane%20reachability",
+    "canonical_refs": {
+      "surface": "docker-compose.yml#published ports",
+      "boundary": "Caddyfile#reverse_proxy",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "CLOUD-AND-DEPLOYMENT.md#Unexpected service or management-plane reachability"
+    },
+    "surface": "Published host ports 8000, 1883, 80, 443",
+    "boundary": "Caddy as sole TLS ingress and XFF source",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Direct backend/broker reachability bypassing the proxy",
+    "starting_paths": [
+      "docker-compose.yml",
+      "Caddyfile",
+      "mosquitto.conf",
+      "backend/Dockerfile",
+      "Dockerfile",
+      "bd_intivision/docker-compose.yml",
+      "backend/auth.py"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Obvious things",
+    "selected_companion_blocks": [
+      "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+      "CLOUD-AND-DEPLOYMENT.md#Universal moves",
+      "CLOUD-AND-DEPLOYMENT.md#Validation rules",
+      "CLOUD-AND-DEPLOYMENT.md#Unexpected service or management-plane reachability",
+      "CLOUD-AND-DEPLOYMENT.md#Trusted-proxy and mesh identity bypass",
+      "CLOUD-AND-DEPLOYMENT.md#Host or control-plane capability exposure"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Access control",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Resource and file handling",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Wildcard",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "No CI, release, signing, plugin or updater surface in source; unpinned dependencies are an obvious-things hardening check."
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "No LLM, prompt or tool-calling code in source."
+      },
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "No native code in repository; OpenCV/FFmpeg decoders are third-party and out of source scope."
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "No native app, deep link, webview bridge or local IPC surface."
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "in_progress",
+    "agent_id": "h5-deploy-secrets",
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter": "h5-deploy-secrets"
+  },
+  {
+    "coverage_id": "repository%23tracked%20files%20and%20git%20history::.gitignore%23secret%20exclusion::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Cryptography%20and%20secrets",
+    "canonical_refs": {
+      "surface": "repository#tracked files and git history",
+      "boundary": ".gitignore#secret exclusion",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Cryptography and secrets"
+    },
+    "surface": "Tracked files and git history",
+    "boundary": "Secret exclusion from version control",
+    "subsystem": "All in-scope subsystems (quick profile)",
+    "attack_class": "Hardcoded or historical secrets, token crypto",
+    "starting_paths": [
+      ".gitignore",
+      ".dockerignore",
+      "Caddyfile",
+      "config.yaml",
+      "settings.py",
+      "backend/auth.py",
+      "backend/manage.py"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Cryptography and secrets",
+    "selected_companion_blocks": [
+      "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+      "CLOUD-AND-DEPLOYMENT.md#Universal moves",
+      "CLOUD-AND-DEPLOYMENT.md#Validation rules",
+      "CLOUD-AND-DEPLOYMENT.md#Secret exposure across workload boundaries"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Access control",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Resource and file handling",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Wildcard",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Assigned to its own unit or covered by the final coverage critic in the quick profile."
+      },
+      {
+        "block": "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+        "reason": "No CI, release, signing, plugin or updater surface in source; unpinned dependencies are an obvious-things hardening check."
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "No LLM, prompt or tool-calling code in source."
+      },
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "No native code in repository; OpenCV/FFmpeg decoders are third-party and out of source scope."
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "No native app, deep link, webview bridge or local IPC surface."
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "in_progress",
+    "agent_id": "h5-deploy-secrets",
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter": "h5-deploy-secrets"
+  }
+]

@@ -1,0 +1,276 @@
+[
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "backend/app.py:ws_live:session-not-rechecked-after-accept",
+    "title": "Open /ws/live sockets keep working after logout, suspension, password reset or session expiry",
+    "description": "ws_live validates the vigia_session cookie once, right after the handshake. It then loops indefinitely, processing frames with the user and camera captured at connect time. HTTP routes re-check the session on every request (revoked_at, expires_at and users.status). backend/manage.py set-status and set-password revoke all session rows so that a suspended or reset account loses its sessions, but nothing closes or re-validates sockets that are already open. A suspended resident keeps a working socket. So does someone using a stolen cookie whose sessions were revoked by a password reset. Each frame is still analysed. MEDIO/ALTO results are inserted as events attributed to that user and camera in the community's records, and dispatch_live_alert still drives the shared MQTT siren and the Telegram channel (subject only to the global per-level cooldown). Socket lifetime is also not tied to the 12-hour session expiry. No data from other users is disclosed over the socket.",
+    "claimed_root_cause": "backend/app.py ws_live calls auth.user_from_websocket and cameras.resolve_camera only once, before the receive loop. The loop over receive_bytes and _process_frame never re-checks the session token, account status, expiry or camera binding, and the server keeps no registry of open sockets to close when sessions are revoked.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 538,
+        "scope": "ws_live",
+        "description": "WebSocket /ws/live?camera= upgrade carrying the vigia_session cookie."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 546,
+        "scope": "ws_live",
+        "description": "Session resolved once via auth.user_from_websocket; revocation, expiry and status are checked only at this moment."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 554,
+        "scope": "ws_live",
+        "description": "Camera binding (owner, private, active) resolved once."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 567,
+        "scope": "ws_live",
+        "description": "Inside the while True loop, frames are received indefinitely with no session, status or expiry re-check."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 569,
+        "scope": "ws_live",
+        "description": "Each frame is processed with the user and camera captured at connect time."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 533,
+        "scope": "_process_frame",
+        "description": "insert_event writes an event and evidence media row attributed to the captured user, community and camera."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/app.py",
+        "line": 534,
+        "scope": "_process_frame",
+        "description": "dispatch_live_alert triggers the shared siren (ALTO) or warning (MEDIO) and sends a Telegram photo alert."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "backend/auth.py",
+        "line": 158,
+        "description": "The HTTP session lookup requires revoked_at IS NULL, expires_at > now() and status 'active' on every request; the WebSocket path runs it only once."
+      },
+      {
+        "file": "backend/manage.py",
+        "line": 184,
+        "description": "set-status documents that a suspended account cannot log in and loses its sessions; line 189 only updates session rows."
+      },
+      {
+        "file": "backend/manage.py",
+        "line": 178,
+        "description": "set-password revokes all session rows to close open sessions; open sockets are unaffected."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 463,
+        "description": "Logout only revokes the session row; no socket is closed."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 375,
+        "description": "dispatch_live_alert triggers the siren for ALTO events, limited only by a global per-level cooldown (line 370)."
+      },
+      {
+        "file": "engine.py",
+        "line": 146,
+        "description": "LiveSession.process emits an event for MEDIO/ALTO frames, so continued frames keep producing events and evidence images."
+      },
+      {
+        "file": "backend/Dockerfile",
+        "line": 25,
+        "description": "uvicorn runs with no WebSocket timeout or lifetime options, and the Caddyfile reverse_proxy (Caddyfile:2) sets no stream timeout, so source does not bound socket lifetime."
+      }
+    ],
+    "blockers": [
+      "Target code was not executed (no sandbox, PostgreSQL or YOLO models), so it was not observed that a socket opened before revocation keeps receiving, analysing and inserting frames after the session row is revoked or the user is suspended.",
+      "How long such a socket can stay open in deployment depends on uvicorn/websockets keepalive defaults and Caddy's WebSocket proxy behaviour (for example closing streams on config reload). Source does not configure these and they were not observed."
+    ],
+    "validation_plan": {
+      "local": "In a sandbox with a disposable local PostgreSQL (schema_vigia.sql) and one dummy resident with a private camera, use Starlette TestClient against backend.app. Patch get_engine to return a stub whose new_session().process returns a fixed ALTO event, patch cv2.imdecode to return a small array, and patch get_dispatcher to a recording mock. Log in, open /ws/live?camera=<id> and send one frame. Then run UPDATE users SET status='suspended' and UPDATE sessions SET revoked_at=now() for that user, as manage.py set-status does. Wait past the ALTO cooldown, send a second frame on the same socket, and count events rows and mock actuator.trigger calls. The claim holds if the second frame still inserts an event and calls the mock. Regression check: re-validate the token, status, expiry and camera per frame (or on a short interval) and close the socket with 4401."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "backend/auth.py:authenticate:locked-path-skips-bcrypt-timing",
+    "title": "Locked-account login branch skips bcrypt, so response time reveals whether an account exists",
+    "description": "POST /login is meant to make unknown, inactive, wrong-password and locked accounts indistinguishable. Every failure returns the same 401 body, and unknown or inactive accounts run a dummy bcrypt check so they take as long as a real check. The locked branch in auth.authenticate returns before any bcrypt work. Every other failure path runs exactly one bcrypt verification at the same default cost. An anonymous visitor can send five wrong passwords for a candidate email or phone number and then time a sixth attempt. A registered, now-locked account answers without the bcrypt delay; an unregistered identifier answers after it. This reveals whether that email or phone belongs to a VIGIA user, and it locks the real account for LOCK_MINUTES as a side effect. The impact is limited to disclosure of account existence. The per-IP throttle (30 failures per 15 minutes by default) limits the rate to about five identifiers per source address per window.",
+    "claimed_root_cause": "backend/auth.py authenticate returns 'locked' at line 107 before calling verify_password. The locked path therefore does no bcrypt work, while the unknown, inactive and wrong-password paths each run one bcrypt verification at the same default cost (bcrypt.gensalt() for both _DUMMY_HASH and user hashes).",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 438,
+        "scope": "login_submit",
+        "description": "Anonymous POST /login with form fields identifier and password."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 445,
+        "scope": "login_submit",
+        "description": "Calls auth.authenticate(identifier, password)."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/auth.py",
+        "line": 112,
+        "scope": "authenticate",
+        "description": "Earlier failed attempts for an existing account: the fifth consecutive failure sets locked_until = now() + LOCK_MINUTES (CASE at line 116)."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/auth.py",
+        "line": 96,
+        "scope": "authenticate",
+        "description": "The next attempt looks up the account by lower(email) or phone and computes the locked flag from locked_until."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/auth.py",
+        "line": 107,
+        "scope": "authenticate",
+        "description": "Locked account: returns 'locked' immediately with no bcrypt work, so the response comes back roughly one bcrypt duration sooner than for an unknown identifier."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "backend/auth.py",
+        "line": 104,
+        "description": "Unknown or inactive identifier: one bcrypt verification against _DUMMY_HASH, then returns 'invalid'."
+      },
+      {
+        "file": "backend/auth.py",
+        "line": 64,
+        "description": "Comment states the intent: the dummy hash makes a nonexistent user take the same time, so account existence cannot be deduced from response time."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 450,
+        "description": "Comment states the intent: the same message and code for 'does not exist', 'wrong password' and 'locked', so nobody can find out which accounts exist."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 453,
+        "description": "Identical 401 response for every failure reason; only timing differs."
+      },
+      {
+        "file": "backend/auth.py",
+        "line": 66,
+        "description": "The dummy hash is created with bcrypt.gensalt() at default cost."
+      },
+      {
+        "file": "backend/auth.py",
+        "line": 53,
+        "description": "User password hashes (manage.py create-user and set-password call hash_password) also use bcrypt.gensalt() at default cost, so unknown and wrong-password paths take about the same time and only the locked path differs."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 440,
+        "description": "The per-IP throttle (defaults at backend/auth.py:34-35) limits the probe rate but does not remove the oracle."
+      }
+    ],
+    "blockers": [
+      "Target code was not executed (no OS-enforced sandbox, PostgreSQL instance or bcrypt runtime), so the response-time gap between the locked branch and the unknown-account branch has not been measured."
+    ],
+    "validation_plan": {
+      "local": "In a sandbox with a disposable local PostgreSQL loaded from bd_intivision/schema_vigia.sql and one dummy active user, call backend.auth.authenticate directly. Make five calls with a wrong password for the dummy user, then time a sixth call. Separately, time six calls for an unregistered identifier. The claim holds if the dummy user's sixth call returns 'locked' in a few milliseconds while each call for the unregistered identifier takes about one bcrypt duration (hundreds of milliseconds at the default cost of 12). Regression check: call verify_password(password, _DUMMY_HASH) before returning 'locked' and confirm the timings converge."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "backend/auth.py:client_ip:xff-trusted-from-any-private-peer",
+    "title": "client_ip trusts client-supplied X-Forwarded-For from any private or loopback peer, not only from Caddy",
+    "description": "client_ip supplies the key for the per-IP login throttle and the address stored in sessions.ip and in the admin view_camera audit entry. It returns the last X-Forwarded-For element whenever the TCP peer is in 127/8, 10/8, 172.16/12, 192.168/16, ::1 or fc00::/7. Through Caddy this is correct, because the last element is always the one Caddy sets from the real client. However, docker-compose.yml also publishes the backend directly on all host interfaces at port 8000. Docker may present a client of that port as a private gateway address, for example with userland-proxy handling of IPv6 clients when ip6tables is disabled, with rootless Docker, or with Docker Desktop. A client on the same private network (for example a cloud VPC) is also a private peer. In those cases the client's own X-Forwarded-For value is trusted. Each failed login can then claim a new address to escape the 30-failures-per-15-minutes throttle, leaving only the per-account lockout against password spraying. An attacker can also attribute failures to a victim's real address to block logins from it through Caddy, and can forge the IP recorded in sessions and audit_log.",
+    "claimed_root_cause": "backend/auth.py client_ip decides whether to trust the proxy header by membership in broad private ranges (_REDES_DE_CONFIANZA) instead of the specific Caddy proxy address. Any peer that appears private, including a direct client of the published port when Docker rewrites the source address, therefore supplies the address used by security controls.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/app.py",
+        "line": 438,
+        "scope": "login_submit",
+        "description": "Anonymous POST /login with an arbitrary X-Forwarded-For header, reaching the backend directly on published port 8000."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/app.py",
+        "line": 439,
+        "scope": "login_submit",
+        "description": "Client address derived with auth.client_ip(request)."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/auth.py",
+        "line": 260,
+        "scope": "client_ip",
+        "description": "The peer address is checked only for membership in the private and loopback ranges defined at backend/auth.py:239-240."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/auth.py",
+        "line": 263,
+        "scope": "client_ip",
+        "description": "The last comma-separated X-Forwarded-For element is taken and returned if it parses as an IP address."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/app.py",
+        "line": 440,
+        "scope": "login_submit",
+        "description": "The per-IP throttle decision is keyed on the header-supplied address, and failures are recorded under it at backend/app.py:449."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "docker-compose.yml",
+        "line": 10,
+        "description": "Backend port 8000 is published on all host interfaces in addition to the Caddy ingress."
+      },
+      {
+        "file": "Caddyfile",
+        "line": 2,
+        "description": "Caddy's reverse_proxy to backend:8000 is the only intended forwarding proxy."
+      },
+      {
+        "file": "backend/auth.py",
+        "line": 239,
+        "description": "Trusted networks are all RFC1918, loopback and ULA ranges rather than the proxy's address."
+      },
+      {
+        "file": "backend/auth.py",
+        "line": 283,
+        "description": "The throttle compares the failure count for the derived address against LOGIN_IP_MAX_FAILURES."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 454,
+        "description": "create_session stores the derived address in sessions.ip."
+      },
+      {
+        "file": "backend/app.py",
+        "line": 731,
+        "description": "The admin view_camera audit entry records auth.client_ip(request)."
+      }
+    ],
+    "blockers": [
+      "Source does not show which address the backend container sees for a client connecting directly to published port 8000; this is a Docker networking fact. With iptables DNAT the public IPv4 address is preserved and the header is ignored. With userland-proxy handling (for example IPv6 clients without ip6tables), rootless Docker or Docker Desktop, the peer appears as a private gateway address and the header is trusted.",
+      "Whether port 8000 is reachable from the Internet or from a shared private network at all (host or cloud firewall) is a deployment fact that was not observed.",
+      "Target code was not executed, so the throttle bypass was not observed locally."
+    ],
+    "validation_plan": {
+      "local": "In a sandbox, build a Starlette Request whose scope client is ('172.18.0.1', 40000) with header X-Forwarded-For: 203.0.113.7, and confirm that auth.client_ip returns '203.0.113.7'. Call register_failure 30 times for that address, then confirm throttled('203.0.113.7') is True and throttled('203.0.113.8') is False. Regression check: trust X-Forwarded-For only when the peer equals the configured Caddy address, or stop publishing port 8000.",
+      "deployment": "Without sending any test traffic, the owner checks on the production host: (1) whether port 8000 is open to the Internet or to other tenants of the private network (host firewall rules and the cloud security group); (2) how Docker publishes it (docker info for rootless mode, /etc/docker/daemon.json for userland-proxy and ip6tables, and whether the host has a public IPv6 address); (3) in the existing database, SELECT ip, count(*) FROM sessions GROUP BY ip, and in existing backend logs the 'Acceso fallido desde' lines, looking for Docker gateway addresses (for example 172.x.0.1), which would show that direct clients already appear as private peers."
+    }
+  }
+]

@@ -1,0 +1,69 @@
+{
+  "run_id": "intivision-run-1",
+  "repo": "intivision (github.com/AngelGabri3l/intivision)",
+  "target": "C:/Users/CARLOS/OneDrive/Escritorio/intivision",
+  "source_ref": {
+    "commit": "5999fbfa09f33ff86c21177e691b95876daa9e53",
+    "branch": "main",
+    "worktree_dirty": false
+  },
+  "profile": "quick",
+  "scope_paths": [
+    "."
+  ],
+  "budget": null,
+  "execution_policy": "sandboxed-source-and-local-only",
+  "execution_capability": "No OS-enforced sandbox available on this host (Windows 11, Docker daemon not running). Target-controlled code is NOT executed; all evidence is source-only. Decisive runtime facts are recorded as needs_validation blockers.",
+  "selected_companions": [
+    "WEB-PROTOCOL-AND-AUTH.md",
+    "CLIENT-SIDE.md",
+    "DATA-ISOLATION-AND-LIFECYCLE.md",
+    "PROTOCOLS-RPC-AND-MESSAGING.md",
+    "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md",
+    "CLOUD-AND-DEPLOYMENT.md"
+  ],
+  "companion_selection_status": "final",
+  "prior_runs": [],
+  "prior_run_note": "No prior ledger or findings exist for this repo.",
+  "shared_file_owner": "parent",
+  "adaptations": [
+    "Selected attack-class/companion blocks, architecture.md, HUNTING.md method/validation/result sections and report-schema.json branches are delivered to agents as exact file paths and section names that each agent must read verbatim, instead of being pasted inline.",
+    "Upstream validator CLIs refuse all input on Windows (fs.constants.O_NOFOLLOW/O_NONBLOCK undefined). Validation runs the same exported validateDocument() functions through a wrapper that does a plain read with regular-file/non-symlink/5 MiB checks on parent-authored files.",
+    "No target-controlled execution and no artifact promotion: all checks are source-only (method source, artifact null).",
+    "Phase 3/5 (merged in quick): 16 unique candidates were grouped into 6 fresh verifiers by area (each verifier is distinct from every hunter whose candidate it checks and receives no other verifier conclusion), instead of one verifier per candidate.",
+    "Phase 2 duplicate consolidation: engine.py:analyze_video:evidence-filename-not-owner-unique (h3) merged into backend/app.py:evidence:first-claimant-storage-key-serves-shared-evidence-file (h2), same root cause."
+  ],
+  "run_status": "complete",
+  "agents": {
+    "recon": [
+      "recon-1a",
+      "recon-1b",
+      "recon-1c",
+      "recon-1d"
+    ],
+    "hunters_wave1": [
+      "h1-auth-session",
+      "h2-access-data",
+      "h3-edge-files",
+      "h4-mqtt-alerts",
+      "h5-deploy-secrets"
+    ],
+    "final_critic": [
+      "critic-final"
+    ],
+    "verifiers": [
+      "v1-auth-session",
+      "v2-evidence",
+      "v3-resources",
+      "v4-siren-sinks",
+      "v5-alert-logic",
+      "v6-deploy"
+    ]
+  },
+  "coverage_note": "quick profile: partial pass; 5 units deferred",
+  "result": {
+    "confirmed": 0,
+    "needs_validation": 16,
+    "rejected": 1
+  }
+}

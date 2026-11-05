@@ -1,0 +1,16 @@
+{
+  "accepted_missing_units": [
+    "POST /login, POST /ingest, GET /health DB work before rate gates",
+    "POST /login, POST /cameras, POST /cameras/{id}/visibilidad request bodies",
+    "POST /analyze media opened by FFmpeg auto-probing",
+    "WS /ws/live JPEG frames and /analyze decoded frames"
+  ],
+  "reassign_ids": [],
+  "rejected_uncovered": [
+    "/login pool entry (dup, merged)",
+    "Telegram photo disclosure (covered by get_dispatcher candidate)",
+    "Telegram token in logs (hardening, secrets unit)",
+    "detector shared ./events (covered by evidence/ingest candidates)"
+  ],
+  "stop": false
+}
